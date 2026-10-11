@@ -1,9 +1,9 @@
-# Config File for CBML Bot
-# ANY ISSUES FOUND IN THIS FILE SHOULD BE REPORTED TO @CANTARELLA_WUWA IN TELEGRAM
+# Leech Dot Bot configuration template.
+# Set credentials through private hosting environment variables; never commit secrets.
 # Required Variables
 BOT_TOKEN = ""
-OWNER_ID = 
-TELEGRAM_API = 
+OWNER_ID = 0
+TELEGRAM_API = 0
 TELEGRAM_HASH = ""
 
 # Optional Configuration
@@ -65,9 +65,9 @@ DEVUPLOADS_FOLDER = ""
 VIKINGFILE_HASH = ""
 VIKINGFILE_FOLDER = ""
 GDRIVE_ID = ""
-GD_DESP = "Uploaded with CANTARELLABOTS"
-AUTHOR_NAME = "TENKA"
-AUTHOR_URL = "https://t.me/cantarella_wuwa"
+GD_DESP = "Uploaded with CodeDots"
+AUTHOR_NAME = "Code_Dots"
+AUTHOR_URL = "https://t.me/Code_Dots"
 INSTADL_API = ""
 IMDB_TEMPLATE = ""
 IMAGES = []
@@ -163,7 +163,7 @@ USER_TIME_INTERVAL = 0
 UPLOAD_PATHS = {}
 DRIVE_CATEGORY_MODE = False
 DRIVE_CATEGORY_SA = ""
-UPSTREAM_REPO = "https://github.com/abhinai2244/CBML"
+UPSTREAM_REPO = ""
 UPSTREAM_BRANCH = "main"
 USENET_SERVERS = []
 USER_SESSION_STRING = ""
@@ -173,7 +173,7 @@ ENABLE_TELEMETRY = True
 WEB_ACCESS_PASSWORD = ""
 WEB_PINCODE = True
 YT_DLP_OPTIONS = {}
-YT_DESP = "Uploaded with CANTARELLABOTS"
+YT_DESP = "Uploaded with CodeDots"
 YT_TAGS = ["telegram", "bot", "youtube"]
 YT_CATEGORY_ID = 22
 YT_PRIVACY_STATUS = "unlisted"
