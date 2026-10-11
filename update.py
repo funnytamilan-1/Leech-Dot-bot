@@ -132,6 +132,14 @@ def _fetch_config_from_db(config_file, db_part):
 
 
 def _run_update(upstream_repo, upstream_branch, version):
+    # A hard reset can replace local commits and the checked-out application.
+    # Require an explicit opt-in so a stale DB/config value cannot overwrite
+    # the deployed repository on every restart.
+    if environ.get("ENABLE_SELF_UPDATE", "").strip().lower() not in {
+        "1", "true", "yes", "on"
+    }:
+        _LOGGER.info("Self-update disabled (set ENABLE_SELF_UPDATE=true to enable).")
+        return
     if not upstream_repo:
         _LOGGER.info("No UPSTREAM_REPO set, skipping git update")
         return
