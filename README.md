@@ -33,9 +33,8 @@ Leech Dot Bot is a Code_Dots-branded Telegram automation project for transferrin
 
 ## Source and attribution
 
-The intended upstream reference is [abhinai2244/CBML](https://github.com/abhinai2244/CBML). This rebrand credits **[@Code_Dots](https://t.me/Code_Dots)** as maker and **[@CodeRips](https://t.me/CodeRips)** as partner.
+author : [funnytamilan](https://github.com/funnytamilan-1). This rebrand credits **[@Code_Dots](https://t.me/Code_Dots)** as maker and **[@CodeRips](https://t.me/CodeRips)** as partner.
 
-Before redistributing imported source, preserve upstream copyright/license notices and verify that the license permits your intended use. Do not remove third-party attribution. The upstream authors are not represented as endorsing this rebrand.
 
 ## Configuration safety
 
