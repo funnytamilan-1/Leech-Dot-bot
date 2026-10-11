@@ -46,38 +46,9 @@ basicConfig(
 
 LOGGER = getLogger(__name__)
 
-def patch_rsa_exception_syntax():
-    import site
-    import os
-    import re
-
-    site_pkgs = site.getsitepackages()
-    for sp in site_pkgs:
-        if not os.path.exists(sp):
-            continue
-        for root, _, files in os.walk(sp):
-            for file_ in files:
-                if file_.lower() == "rsa.py":
-                    fp = os.path.join(root, file_)
-                    try:
-                        with open(fp, "r", encoding="utf-8", errors="ignore") as f:
-                            content = f.read()
-                        if "except TypeError, ValueError:" in content or re.search(r"except\s+[A-Za-z0-9_.]+\s*,\s*[A-Za-z0-9_.]+\s*:", content):
-                            new_content = re.sub(
-                                r"except\s+([A-Za-z0-9_.]+)\s*,\s*([A-Za-z0-9_.]+)\s*:",
-                                r"except (\1, \2):",
-                                content
-                            )
-                            with open(fp, "w", encoding="utf-8") as f:
-                                f.write(new_content)
-                            LOGGER.info(f"Patched RSA exception syntax in {fp}")
-                    except Exception as e:
-                        LOGGER.warning(f"Failed to check/patch {fp}: {e}")
-
-try:
-    patch_rsa_exception_syntax()
-except Exception as e:
-    LOGGER.warning(f"RSA syntax patch error: {e}")
+# Do not rewrite installed third-party packages at runtime. The former RSA
+# compatibility patch recursively scanned site-packages on every boot and
+# mutated rsa.py in-place, making startup slower and deployments unpredictable.
 
 bot_cache = {}
 DOWNLOAD_DIR = "/usr/src/app/downloads/"
