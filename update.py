@@ -198,27 +198,41 @@ def _ensure_youtube_js_runtime():
 
 
 def _update_packages():
-    pip_cmd = "pip"
-    if srun(["which", "uv"], capture_output=True).returncode == 0:
-        pip_cmd = "uv pip"
-    scall(f"{pip_cmd} install -U -r requirements.txt", shell=True)
-    scall(f"{pip_cmd} install --no-deps mega.py>=1.0.8", shell=True)
+    # Package upgrades on every boot add substantial startup latency and can
+    # silently replace dependencies with incompatible versions. Make upgrades
+    # explicit instead of doing them on every deployment restart.
+    if environ.get("UPDATE_PACKAGES_ON_START", "").strip().lower() not in {
+        "1", "true", "yes", "on"
+    }:
+        _LOGGER.info(
+            "Skipping package upgrades (set UPDATE_PACKAGES_ON_START=true to enable)."
+        )
+        return
+
+    from sys import executable
+
+    def install(*packages):
+        command = ["uv", "pip", "install", "--python", executable]
+        if srun(["which", "uv"], capture_output=True).returncode != 0:
+            command = [executable, "-m", "pip", "install"]
+        result = srun([*command, *packages])
+        if result.returncode != 0:
+            raise RuntimeError(f"Package installation failed: {packages!r}")
+
+    install("-U", "-r", "requirements.txt")
+    install("--no-deps", "mega.py>=1.0.8")
     _ensure_youtube_js_runtime()
-    # One-time (per boot) yt-dlp nightly: YouTube breaks stable builds often
-    # ("page needs to be reloaded" / "Requested format is not available").
-    # Installed together with its extras so yt-dlp-ejs stays version-matched.
-    scall(f'{pip_cmd} install -U --pre "yt-dlp[default,curl-cffi]"', shell=True)
-    scall(f"{pip_cmd} install -U yt-dlp-ejs", shell=True)
+    # Keep yt-dlp and its EJS companion versioned together when explicitly
+    # requesting an upgrade.
+    install("-U", "--pre", "yt-dlp[default,curl-cffi]", "yt-dlp-ejs")
     _LOGGER.info("Successfully Updated all the Packages!")
 
 
 def _cleanup():
-    for d in ["gen_scripts", ".github"]:
-        if isdir(d):
-            rmtree(d, ignore_errors=True)
-    for f in ["README.md", "LICENSE", "Dockerfile", "docker-compose.yml"]:
-        if path.exists(f):
-            remove(f)
+    # Never delete tracked project files during normal startup. The old cleanup
+    # removed README, LICENSE, Dockerfile, docker-compose.yml, and .github even
+    # when no upstream update was configured.
+    _LOGGER.info("Skipping destructive startup cleanup; preserving repository files.")
 
 
 def main():
