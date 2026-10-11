@@ -1,8 +1,16 @@
+import importlib.util
 import os
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
-from bot.core.config_manager import Config
+# Load the standalone config manager without importing bot/__init__.py, which
+# starts the full Telegram runtime and optional service clients.
+MODULE_PATH = Path(__file__).resolve().parents[1] / "bot" / "core" / "config_manager.py"
+SPEC = importlib.util.spec_from_file_location("config_manager_under_test", MODULE_PATH)
+config_manager = importlib.util.module_from_spec(SPEC)
+SPEC.loader.exec_module(config_manager)
+Config = config_manager.Config
 
 
 class ConfigEnvironmentTests(unittest.TestCase):
