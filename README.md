@@ -4,7 +4,7 @@
 
 <img src="assets/codedots-leechdot.svg" alt="Leech Dot Bot — CodeDots" width="100%"/>
 
-**A redesigned Telegram leech/mirror bot project**
+**A Telegram leech/mirror bot project**
 
 [![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
 [![Made by](https://img.shields.io/badge/Made%20by-%40Code__Dots-7c5cff?style=flat-square)](https://t.me/Code_Dots)
