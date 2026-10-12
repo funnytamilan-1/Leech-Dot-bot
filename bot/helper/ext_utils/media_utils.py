@@ -189,7 +189,13 @@ async def get_media_info(path, extra_info=False):
         LOGGER.error(f"Get Media Info: {e}. Mostly File not found! - File: {path}")
         return (0, "", "", "", "") if extra_info else (0, None, None)
     if result[0] and result[2] == 0:
-        ffresult = literal_eval(result[0])
+        try:
+            # ffprobe emits JSON (including JSON null/true/false); literal_eval
+            # rejects valid JSON values and can break otherwise valid media files.
+            ffresult = json.loads(result[0])
+        except (TypeError, ValueError) as e:
+            LOGGER.error("get_media_info: invalid ffprobe JSON: %s", e)
+            return (0, "", "", "", "") if extra_info else (0, None, None)
         if not isinstance(ffresult, dict):
             LOGGER.error(f"get_media_info: unexpected ffprobe payload: {result}")
             return (0, "", "", "", "") if extra_info else (0, None, None)
@@ -197,7 +203,10 @@ async def get_media_info(path, extra_info=False):
         if fields is None:
             LOGGER.error(f"get_media_info: {result}")
             return (0, "", "", "", "") if extra_info else (0, None, None)
-        duration = round(float(fields.get("duration", 0)))
+        try:
+            duration = round(float(fields.get("duration") or 0))
+        except (TypeError, ValueError, OverflowError):
+            duration = 0
         if extra_info:
             lang, langr, qual, stitles = "", "", "", ""
             if (streams := ffresult.get("streams")) and streams[0].get(
@@ -272,7 +281,11 @@ async def get_document_type(path):
             is_video = True
         return is_video, is_audio, is_image
     if result[0] and result[2] == 0:
-        fields = literal_eval(result[0]).get("streams")
+        try:
+            fields = json.loads(result[0]).get("streams")
+        except (TypeError, ValueError) as e:
+            LOGGER.error("get_document_type: invalid ffprobe JSON: %s", e)
+            return is_video, is_audio, is_image
         if fields is None:
             LOGGER.error(f"get_document_type: {result}")
             return is_video, is_audio, is_image
