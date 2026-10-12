@@ -1,3 +1,4 @@
+# Configuration regression tests · Made by @Code_Dots · Partner: @CodeRips.
 import importlib.util
 import os
 import unittest
