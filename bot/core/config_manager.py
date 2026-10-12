@@ -242,7 +242,10 @@ class Config:
         for attr in dir(settings):
             if hasattr(cls, attr):
                 value = getattr(settings, attr)
-                if not value:
+                # Explicit False/0 values are valid configuration overrides.
+                # Skip only unset values; truthiness would make DISABLE_JD=False
+                # and similar feature toggles impossible to apply from config.py.
+                if value is None or value == "":
                     continue
                 if isinstance(value, str):
                     value = value.strip()
