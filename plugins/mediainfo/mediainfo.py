@@ -1,6 +1,6 @@
+# MediaInfo plugin · Made by @Code_Dots · Partner: @CodeRips.
 from os import getcwd, path as ospath
 from re import search, sub as re_sub
-from shlex import split
 
 from aiofiles import open as aiopen
 from aiofiles.os import mkdir, path as aiopath, remove as aioremove
@@ -44,15 +44,16 @@ async def gen_mediainfo(message, link=None, media=None, mmsg=None):
                         async for chunk in response.content.iter_chunked(4 * 1024 * 1024):
                             await f.write(chunk)
         elif media:
-            des_path = ospath.join(path, media.file_name)
+            safe_name = re_sub(r"[^A-Za-z0-9._-]+", "_", ospath.basename(media.file_name or "media"))[:180] or "media"
+            des_path = ospath.join(path, safe_name)
             file_size = media.file_size
             if file_size <= 50000000:
                 await mmsg.download(ospath.join(getcwd(), des_path))
             else:
-                async for chunk in TgClient.bot.stream_media(media, limit=5):
-                    async with aiopen(des_path, "ab") as f:
+                async with aiopen(des_path, "wb") as f:
+                    async for chunk in TgClient.bot.stream_media(media, limit=5):
                         await f.write(chunk)
-        stdout, _, _ = await cmd_exec(split(f'mediainfo "{des_path}"'))
+        stdout, _, _ = await cmd_exec(["mediainfo", des_path])
         tc = f"<h4>📌 {ospath.basename(des_path)}</h4><br><br>"
         if len(stdout) != 0:
             tc += parseinfo(stdout, file_size)
@@ -72,11 +73,11 @@ async def gen_mediainfo(message, link=None, media=None, mmsg=None):
     try:
         from datetime import datetime
         import random
-        title = f"MediaInfo-X-{datetime.now().strftime("%d-%m")}-{random.randint(10000, 99999)}"
+        title = f"MediaInfo-X-{datetime.now().strftime('%d-%m')}-{random.randint(10000, 99999)}"
         page = await telegraph.create_page(title=title, content=tc)
         path = page.get("path", "") if isinstance(page, dict) else ""
         if path:
-            page_url = path if path.startswith("http") else f"https://graph.org/{path.lstrip("/")}"
+            page_url = path if path.startswith("http") else f"https://graph.org/{path.lstrip('/')}"
     except Exception as e:
         LOGGER.warning(f"Graph.org MediaInfo page creation failed: {e}")
 
@@ -89,7 +90,7 @@ async def gen_mediainfo(message, link=None, media=None, mmsg=None):
                     json={
                         "content": tc,
                         "title": f"MediaInfo · {ospath.basename(des_path or 'media')}",
-                        "author": "HTR-X",
+                        "author": "Code_Dots",
                         "expiry": "never",
                     },
                     timeout=ClientTimeout(total=30),
