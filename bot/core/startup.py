@@ -1,3 +1,4 @@
+# Leech Dot Bot startup services · Made by @Code_Dots · Partner: @CodeRips.
 from asyncio import create_subprocess_shell, gather, sleep
 from shlex import quote
 from importlib import import_module
