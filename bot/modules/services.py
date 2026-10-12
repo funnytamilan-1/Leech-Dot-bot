@@ -1,5 +1,6 @@
-from asyncio import gather
+from asyncio import gather, to_thread
 from html import escape
+from secrets import token_urlsafe
 from pyrogram.enums import ButtonStyle
 from time import monotonic, time
 from uuid import uuid4
@@ -9,13 +10,20 @@ from aiofiles import open as aiopen
 from cloudscraper import create_scraper
 from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
-from .. import LOGGER, auth_chats, user_data
+from .. import LOGGER, auth_chats, user_data, shortener_dict
 from ..core.config_manager import Config
 from ..core.tg_client import TgClient
 from ..helper.ext_utils.bot_utils import new_task, update_user_ldata
 from ..helper.ext_utils.links_utils import decode_slink
 from ..helper.ext_utils.status_utils import get_readable_time
 from ..helper.ext_utils.db_handler import database
+from ..helper.ext_utils.shortener_utils import short_url
+from Code_dot.database.verification import (
+    consume_token as consume_start_token,
+    is_verified as is_start_verified,
+    issue_token as issue_start_token,
+    mark_verified as mark_start_verified,
+)
 from ..helper.languages import Language
 from ..helper.telegram_helper.bot_commands import BotCommands
 from ..helper.telegram_helper.button_build import ButtonMaker
@@ -80,9 +88,79 @@ async def _build_start_buttons():
     return buttons.build_menu(b_cols=3, h_cols=2, f_cols=1)
 
 
+async def _start_verification_gate(message, user_id):
+    """Gate /start with a user-bound, expiring shortener token when enabled.
+
+    This confirms the user returned through the configured redirect. Providers
+    without server-side callbacks cannot cryptographically prove that every
+    intermediate ad/task was completed.
+    """
+    if not Config.START_SHORTENER_REQUIRED or user_id == Config.OWNER_ID:
+        return False
+
+    command_args = getattr(message, "command", []) or []
+    if len(command_args) > 1 and command_args[1].startswith("sdv_"):
+        token = command_args[1][4:]
+        valid = await to_thread(consume_start_token, token, user_id)
+        if not valid:
+            await send_message(
+                message,
+                "<blockquote><b>Verification link is invalid, expired, or belongs to another user.</b>\nPlease request a fresh link with /start.</blockquote>",
+            )
+            return True
+        await to_thread(
+            mark_start_verified, user_id, Config.START_SHORTENER_SESSION_TTL
+        )
+        await send_message(
+            message,
+            "<blockquote><b>✅ Verification successful.</b>\nSend /start again to open the bot.</blockquote>",
+        )
+        return True
+
+    if await to_thread(is_start_verified, user_id):
+        return False
+
+    if not shortener_dict and not Config.PROTECTED_API:
+        LOGGER.error("START_SHORTENER_REQUIRED is enabled but no shortener provider is configured")
+        await send_message(
+            message,
+            "<blockquote><b>Start verification is temporarily unavailable.</b>\nThe bot owner must configure a shortener provider.</blockquote>",
+        )
+        return True
+
+    bot_info = await TgClient.bot.get_me()
+    if not getattr(bot_info, "username", None):
+        await send_message(message, "<blockquote>Verification is temporarily unavailable. Please try again later.</blockquote>")
+        return True
+
+    token = token_urlsafe(24)
+    await to_thread(
+        issue_start_token, token, user_id, Config.START_SHORTENER_LINK_TTL
+    )
+    target_url = f"https://t.me/{bot_info.username}?start=sdv_{token}"
+    shortened_url = await short_url(target_url)
+    if shortened_url == target_url:
+        await send_message(
+            message,
+            "<blockquote><b>Could not create a verification link.</b>\nPlease try /start again in a moment.</blockquote>",
+        )
+        return True
+
+    buttons = ButtonMaker()
+    buttons.url_button("🔐 Verify to Start", shortened_url)
+    await send_message(
+        message,
+        "<b>🔐 Start Verification</b>\n\n<blockquote>Open the verification link, complete the configured shortener flow, then return to Telegram. This link is user-bound, expires soon, and can only be used once.</blockquote>",
+        buttons.build_menu(1),
+    )
+    return True
+
+
 @new_task
 async def start(_, message):
     userid = message.from_user.id
+    if await _start_verification_gate(message, userid):
+        return
     user_name = message.from_user.first_name if message.from_user else "User"
     reply_markup = await _build_start_buttons()
 
