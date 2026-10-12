@@ -42,9 +42,9 @@ async def _build_start_buttons():
     buttons = ButtonMaker()
     lang = Language()
     buttons.url_button(
-        lang.START_BUTTON1, "https://github.com/abhinai2244/CBML", "header"
+        "𝗟ᴇᴇᴄʜ 𝗗ᴏᴛ 𝗦ᴏᴜʀᴄᴇ", "https://github.com/funnytamilan-1/Leech-Dot-bot", "header"
     )
-    buttons.url_button(lang.START_BUTTON2, "https://t.me/cantarellabots", "header")
+    buttons.url_button("𝗖ᴏᴅᴇ 𝗗ᴏᴛs", "https://t.me/Code_Dots", "header")
 
     chat_ids = list(auth_chats.keys())
     if Config.AUTHORIZED_CHATS:
@@ -79,8 +79,8 @@ async def _build_start_buttons():
                 buttons.url_button(title, link, position="default")
 
     buttons.url_button(
-        "TENKA IZUMO",
-        "https://t.me/cantarella_wuwa",
+        "𝗣ᴀʀᴛɴᴇʀ · @CodeRips",
+        "https://t.me/CodeRips",
         position="footer",
         style=ButtonStyle.DANGER,
     )
@@ -215,7 +215,7 @@ async def start(_, message):
     if await CustomFilters.authorized(_, message):
         start_string = (
             f"<b>👋 Welcome, {escape(user_name)}!</b>\n\n"
-            f"<blockquote><b>CANTARELLABOTS</b> is ready to mirror and leech files, torrents, and cloud links to Telegram or Cloud Storage.</blockquote>\n\n"
+            f"<blockquote><b>𝗟ᴇᴇᴄʜ 𝗗ᴏᴛ 𝗕ᴏᴛ</b> by @Code_Dots · Partner @CodeRips is ready to mirror and leech files, torrents, and cloud links to Telegram or Cloud Storage.</blockquote>\n\n"
             f"<b>💡 Commands & Help:</b> Use /{help_cmd} to view all available commands and guides.\n"
             f"<b>💬 Authorized Chats:</b> Click any of the authorized chat buttons below to access supported groups."
         )
@@ -234,7 +234,7 @@ async def start(_, message):
         )
     else:
         start_string = (
-            f"<b>👋 Welcome to CANTARELLABOTS, {escape(user_name)}!</b>\n\n"
+            f"<b>👋 Welcome to 𝗟ᴇᴇᴄʜ 𝗗ᴏᴛ 𝗕ᴏᴛ, {escape(user_name)}!</b>\n\n"
             f"<blockquote>Mirror and leech files, torrents, and links to Telegram or Cloud Storage.\n\n"
             f"<b>Note:</b> You are not authorized to use this bot instance directly in private.</blockquote>\n\n"
             f"<b>💬 Authorized Chats:</b> Join our authorized chats below to get access."
