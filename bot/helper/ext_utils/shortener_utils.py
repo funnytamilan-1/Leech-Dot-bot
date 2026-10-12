@@ -28,9 +28,13 @@ _MAX_ATTEMPTS = 4
 def _request(method, url, **kwargs):
     """Run one bounded HTTP request and reject HTTP error responses."""
     kwargs.setdefault("timeout", _REQUEST_TIMEOUT)
-    response = create_scraper().request(method, url, **kwargs)
-    response.raise_for_status()
-    return response
+    scraper = create_scraper()
+    try:
+        response = scraper.request(method, url, **kwargs)
+        response.raise_for_status()
+        return response
+    finally:
+        scraper.close()
 
 
 def _short_url_sync(longurl):
