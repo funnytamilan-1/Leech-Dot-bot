@@ -1,3 +1,4 @@
+# Leech Dot Bot customizations by @Code_Dots · partner @CodeRips.
 from time import time
 from asyncio import to_thread
 
