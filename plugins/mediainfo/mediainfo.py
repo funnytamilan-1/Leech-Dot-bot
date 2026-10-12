@@ -1,4 +1,5 @@
 # MediaInfo plugin · Made by @Code_Dots · Partner: @CodeRips.
+from html import escape
 from os import getcwd, path as ospath
 from re import search, sub as re_sub
 
@@ -54,12 +55,12 @@ async def gen_mediainfo(message, link=None, media=None, mmsg=None):
                     async for chunk in TgClient.bot.stream_media(media, limit=5):
                         await f.write(chunk)
         stdout, _, _ = await cmd_exec(["mediainfo", des_path])
-        tc = f"<h4>📌 {ospath.basename(des_path)}</h4><br><br>"
+        tc = f"<h4>📌 {escape(ospath.basename(des_path))}</h4><br><br>"
         if len(stdout) != 0:
             tc += parseinfo(stdout, file_size)
     except Exception as e:
         LOGGER.error(e)
-        return await edit_message(temp_send, f"MediaInfo Stopped due to {str(e)}")
+        return await edit_message(temp_send, f"MediaInfo Stopped due to {escape(str(e))}")
     finally:
         if des_path and await aiopath.exists(des_path):
             await aioremove(des_path)
@@ -105,7 +106,7 @@ async def gen_mediainfo(message, link=None, media=None, mmsg=None):
         return await edit_message(temp_send, "❌ MediaInfo page creation failed.")
 
     await temp_send.edit(
-        f"<b>MediaInfo:</b>\n\n➲ <b>Link :</b> {page_url}",
+        f"<b>MediaInfo:</b>\n\n➲ <b>Link :</b> {escape(page_url)}",
         disable_web_page_preview=False,
     )
 
@@ -124,7 +125,7 @@ def parseinfo(out, size):
                 trigger = True
                 if not line.startswith("General"):
                     tc += "</pre><br>"
-                tc += f"<h4>{emoji} {line.replace('Text', 'Subtitle')}</h4>"
+                tc += f"<h4>{emoji} {escape(line.replace('Text', 'Subtitle'))}</h4>"
                 break
         if line.startswith("File size"):
             line = size_line
@@ -132,7 +133,7 @@ def parseinfo(out, size):
             tc += "<br><pre>"
             trigger = False
         else:
-            tc += line + "\n"
+            tc += escape(line) + "\n"
     tc += "</pre><br>"
     return tc
 
