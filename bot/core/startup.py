@@ -1,4 +1,5 @@
 from asyncio import create_subprocess_shell, gather, sleep
+from shlex import quote
 from importlib import import_module
 from os import environ, path as ospath, getenv
 
@@ -416,7 +417,7 @@ async def load_configurations():
 
             access_pwd = token_bytes(32).hex()
             Config.WEB_ACCESS_PASSWORD = access_pwd
-        env = f"WEB_ACCESS_PASSWORD={access_pwd} "
+        env = f"WEB_ACCESS_PASSWORD={quote(access_pwd)} "
         bot_loop.create_task(cmd_exec(
             f"{env}gunicorn -k uvicorn.workers.UvicornWorker -w 1 web.wserver:app --bind 0.0.0.0:{PORT}",
             shell=True,
