@@ -2,7 +2,7 @@ import importlib.util
 import os
 import unittest
 from pathlib import Path
-from types import SimpleNamespace
+from types import ModuleType
 from unittest.mock import patch
 
 # Load the standalone config manager without importing bot/__init__.py, which
@@ -39,7 +39,9 @@ class ConfigEnvironmentTests(unittest.TestCase):
     def test_false_config_values_override_true_class_defaults(self):
         Config.DISABLE_JD = True
         Config.DISABLE_NZB = True
-        settings = SimpleNamespace(DISABLE_JD=False, DISABLE_NZB=False)
+        settings = ModuleType("config_test")
+        settings.DISABLE_JD = False
+        settings.DISABLE_NZB = False
 
         with patch.object(config_manager, "import_module", return_value=settings):
             Config.load_config()
