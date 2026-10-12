@@ -1,3 +1,4 @@
+# Leech Dot Bot configuration · Made by @Code_Dots · Partner @CodeRips.
 # Leech Dot Bot configuration template.
 # Set credentials through private hosting environment variables; never commit secrets.
 # Required Variables
