@@ -18,6 +18,10 @@ categories.txt
 cookies.txt
 terabox.txt
 downloads/*
+# Runtime-only SQLite state for Code_dot; never commit user verification data.
+Code_dot/database/*.sqlite3
+Code_dot/database/*.sqlite3-shm
+Code_dot/database/*.sqlite3-wal
 .github/instructions/*
 .github/skills/*
 .github/agents/*

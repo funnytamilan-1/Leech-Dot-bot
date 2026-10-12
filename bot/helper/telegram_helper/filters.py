@@ -1,10 +1,13 @@
+# Leech Dot Bot customizations by @Code_Dots · partner @CodeRips.
 from time import time
+from asyncio import to_thread
 
 from pyrogram.filters import create
 from pyrogram.enums import ChatType
 
 from ... import auth_chats, sudo_users, user_data
 from ...core.config_manager import Config
+from Code_dot.database.verification import is_verified as is_start_verified
 from .tg_utils import chat_info
 
 
@@ -25,6 +28,12 @@ def _chat_context(update):
     return chat.id, thread_id
 
 
+async def _start_verified(user_id):
+    if not Config.START_SHORTENER_REQUIRED or user_id == Config.OWNER_ID:
+        return True
+    return await to_thread(is_start_verified, user_id)
+
+
 class CustomFilters:
     async def owner_filter(self, _, update):
         user = update.from_user or update.sender_chat
@@ -34,6 +43,8 @@ class CustomFilters:
 
     async def authorized_user(self, _, update):
         uid = (update.from_user or update.sender_chat).id
+        if not await _start_verified(uid):
+            return False
         chat_id, thread_id = _chat_context(update)
         return bool(
             uid == Config.OWNER_ID
@@ -66,6 +77,9 @@ class CustomFilters:
     authorized = create(authorized_user)
 
     async def authorized_usetting(self, _, update):
+        uid = (update.from_user or update.sender_chat).id
+        if not await _start_verified(uid):
+            return False
         chat = getattr(_source_message(update), "chat", None)
         if chat and chat.type == ChatType.PRIVATE:
             return True
@@ -93,6 +107,8 @@ class CustomFilters:
     async def sudo_user(self, _, update):
         user = update.from_user or update.sender_chat
         uid = user.id
+        if not await _start_verified(uid):
+            return False
         return bool(
             uid == Config.OWNER_ID
             or uid in user_data

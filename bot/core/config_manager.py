@@ -1,3 +1,4 @@
+# Leech Dot Bot customizations by @Code_Dots · partner @CodeRips.
 from ast import literal_eval
 from importlib import import_module
 from os import getenv
@@ -178,6 +179,9 @@ class Config:
     TMDB_ACCESS_TOKEN = ""
     AUTO_THUMBNAIL = False
     VERIFY_TIMEOUT = 0
+    START_SHORTENER_REQUIRED = False
+    START_SHORTENER_LINK_TTL = 900
+    START_SHORTENER_SESSION_TTL = 86400
     LOGIN_PASS = ""
     TORRENT_TIMEOUT = 0
     TIMEZONE = "Asia/Kolkata"
