@@ -5,6 +5,7 @@ The SQLite file is runtime data and must never be committed to source control.
 """
 
 import hashlib
+from contextlib import closing
 import os
 import sqlite3
 import time
@@ -42,7 +43,7 @@ def issue_token(token: str, user_id: int, ttl: int) -> None:
     """Store only a hash of a user-bound, expiring verification token."""
     token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
     now = time.time()
-    with _connect() as connection:
+    with closing(_connect()) as connection, connection:
         connection.execute("DELETE FROM pending_tokens WHERE expires_at <= ?", (now,))
         connection.execute(
             "INSERT OR REPLACE INTO pending_tokens(token_hash, user_id, expires_at) VALUES (?, ?, ?)",
