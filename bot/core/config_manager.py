@@ -1,3 +1,4 @@
+# Leech Dot Bot customizations by @Code_Dots · partner @CodeRips.
 from ast import literal_eval
 from importlib import import_module
 from os import getenv
