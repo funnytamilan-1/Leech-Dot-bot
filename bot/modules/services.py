@@ -1,3 +1,4 @@
+# Leech Dot Bot customizations by @Code_Dots · partner @CodeRips.
 from asyncio import gather, to_thread
 from html import escape
 from secrets import token_urlsafe
@@ -279,6 +280,8 @@ async def start_cb(_, query):
 
 @new_task
 async def login(_, message):
+    if message.from_user and await _start_verification_gate(message, message.from_user.id):
+        return
     if Config.LOGIN_PASS is None:
         return await send_message(message, "<blockquote>Login password feature is not enabled.</blockquote>")
     elif len(message.command) > 1:
