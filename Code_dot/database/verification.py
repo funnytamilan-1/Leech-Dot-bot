@@ -60,7 +60,12 @@ def consume_token(token: str, user_id: int) -> bool:
             "SELECT user_id, expires_at FROM pending_tokens WHERE token_hash = ?",
             (token_hash,),
         ).fetchone()
-        if not row or int(row[0]) != int(user_id) or float(row[1]) <= now:
+        if not row:
+            return False
+        if int(row[0]) != int(user_id):
+            # Do not let another user invalidate a legitimate user's token.
+            return False
+        if float(row[1]) <= now:
             connection.execute(
                 "DELETE FROM pending_tokens WHERE token_hash = ?", (token_hash,)
             )
