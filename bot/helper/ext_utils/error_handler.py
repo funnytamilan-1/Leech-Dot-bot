@@ -1,3 +1,4 @@
+# Leech Dot Bot reliability helpers · Made by @Code_Dots · Partner: @CodeRips.
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
@@ -123,9 +124,19 @@ class ErrorMonitor:
         ) / metrics.total_operations
         metrics.last_updated = datetime.now()
 
-    def get_circuit_breaker(self, operation: str) -> CircuitBreaker:
+    def get_circuit_breaker(
+        self,
+        operation: str,
+        failure_threshold: int = 5,
+        recovery_timeout: int = 60,
+    ) -> CircuitBreaker:
+        # Keep one breaker per operation; creating it inside each call resets
+        # the failure counter and makes the circuit breaker ineffective.
         if operation not in self.circuit_breakers:
-            self.circuit_breakers[operation] = CircuitBreaker()
+            self.circuit_breakers[operation] = CircuitBreaker(
+                failure_threshold=failure_threshold,
+                recovery_timeout=recovery_timeout,
+            )
         return self.circuit_breakers[operation]
 
     def get_error_summary(self, hours: int = 24) -> Dict[str, Any]:
@@ -189,8 +200,10 @@ def error_handler(operation: str = None):
                     severity=ErrorSeverity.HIGH,
                     context={
                         "operation": op_name,
-                        "args": str(args),
-                        "kwargs": str(kwargs),
+                        # Never persist raw argument values: handlers may pass
+                        # API keys, cookies, session strings, or user content.
+                        "args_count": len(args),
+                        "kwargs_names": sorted(str(key) for key in kwargs),
                     },
                 )
                 raise
@@ -206,7 +219,9 @@ def circuit_breaker(
     def decorator(func: Callable) -> Callable:
         @wraps(func)
         async def wrapper(*args, **kwargs):
-            cb = CircuitBreaker(failure_threshold, recovery_timeout)
+            cb = error_monitor.get_circuit_breaker(
+                operation, failure_threshold, recovery_timeout
+            )
             if not cb.can_execute():
                 raise Exception(f"Circuit breaker open for {operation}")
 
