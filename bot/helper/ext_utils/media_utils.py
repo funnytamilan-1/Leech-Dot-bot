@@ -1,5 +1,5 @@
+# Leech Dot Bot media/FFmpeg helpers · Made by @Code_Dots · Partner: @CodeRips.
 import re
-from ast import literal_eval
 from contextlib import suppress
 from PIL import Image
 from hashlib import md5, sha256
