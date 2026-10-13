@@ -209,32 +209,46 @@ async def get_media_info(path, extra_info=False):
             duration = 0
         if extra_info:
             lang, langr, qual, stitles = "", "", "", ""
-            if (streams := ffresult.get("streams")) and streams[0].get(
-                "codec_type"
-            ) == "video":
-                qual = int(streams[0].get("height"))
-                qual = f"{480 if qual <= 480 else 540 if qual <= 540 else 720 if qual <= 720 else 1080 if qual <= 1080 else 2160 if qual <= 2160 else 4320 if qual <= 4320 else 8640}p"
-                for stream in streams:
-                    if stream.get("codec_type") == "audio" and (
-                        lc := stream.get("tags", {}).get("language")
-                    ):
-                        d_name = lc
-                        native_name = lc
-                        with suppress(Exception):
-                            l_obj = Language.get(lc)
-                            d_name = l_obj.display_name()
-                            native_name = l_obj.autonym()
-                        if d_name not in lang:
-                            lang += f"{d_name}, "
-                        if native_name not in langr:
-                            langr += f"{native_name}, "
-                    if stream.get("codec_type") == "subtitle" and (
-                        st := stream.get("tags", {}).get("language")
-                    ):
-                        with suppress(Exception):
-                            st = Language.get(st).display_name()
-                        if st not in stitles:
-                            stitles += f"{st}, "
+            streams = ffresult.get("streams")
+            if not isinstance(streams, list):
+                streams = []
+            # ffprobe can return audio-only files, malformed stream entries,
+            # or video streams without a height. Treat those as missing metadata
+            # instead of failing the entire leech/media-info workflow.
+            for stream in streams:
+                if not isinstance(stream, dict):
+                    continue
+                if stream.get("codec_type") == "video" and not qual:
+                    try:
+                        height = int(stream.get("height") or 0)
+                    except (TypeError, ValueError, OverflowError):
+                        height = 0
+                    if height > 0:
+                        quality = next(
+                            (limit for limit in (480, 540, 720, 1080, 2160, 4320, 8640) if height <= limit),
+                            8640,
+                        )
+                        qual = f"{quality}p"
+                if stream.get("codec_type") == "audio" and (
+                    lc := (stream.get("tags") or {}).get("language")
+                ):
+                    d_name = lc
+                    native_name = lc
+                    with suppress(Exception):
+                        l_obj = Language.get(lc)
+                        d_name = l_obj.display_name()
+                        native_name = l_obj.autonym()
+                    if d_name not in lang:
+                        lang += f"{d_name}, "
+                    if native_name not in langr:
+                        langr += f"{native_name}, "
+                if stream.get("codec_type") == "subtitle" and (
+                    st := (stream.get("tags") or {}).get("language")
+                ):
+                    with suppress(Exception):
+                        st = Language.get(st).display_name()
+                    if st not in stitles:
+                        stitles += f"{st}, "
             return duration, qual, lang[:-2], stitles[:-2], langr[:-2]
         tags = fields.get("tags", {})
         artist = tags.get("artist") or tags.get("ARTIST") or tags.get("Artist")
