@@ -1,4 +1,5 @@
 """Secure admin entry point for the Leech Dot Bot web control center."""
+from pyrogram.enums import ChatType
 from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from ..core.config_manager import Config
@@ -10,8 +11,8 @@ from web.panel_auth import create_ticket
 @new_task
 async def webpanel(_, message):
     user = getattr(message, "from_user", None)
-    if not user:
-        return await send_message(message, "Open this command in a private chat.")
+    if not user or not message.chat or message.chat.type != ChatType.PRIVATE:
+        return await send_message(message, "For security, open a private chat with the bot and send /webpanel there.")
 
     secret = str(Config.WEBPANEL_SECRET or "")
     base_url = str(Config.WEBPANEL_BASE_URL or "").strip().rstrip("/")
