@@ -1694,8 +1694,14 @@ async def edit_bot_settings(client, query):
         except Exception as exc:
             await query.answer(f"API test failed: {type(exc).__name__}. Check endpoint, key, method and response field.", show_alert=True)
     elif data[1] == "shortener_toggle":
-        await query.answer()
         enabled = len(data) > 2 and data[2] == "on"
+        if enabled and not Config.shortener_provider_configured():
+            await query.answer(
+                "Shortener is optional. Configure a provider first; verification remains OFF.",
+                show_alert=True,
+            )
+            return
+        await query.answer()
         Config.set("START_SHORTENER_REQUIRED", enabled)
         await database.update_config({"START_SHORTENER_REQUIRED": enabled})
         await update_buttons(message, "shortener")
