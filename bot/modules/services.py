@@ -2,7 +2,7 @@
 from asyncio import gather, to_thread
 from html import escape
 from secrets import token_urlsafe
-from pyrogram.enums import ButtonStyle
+
 from time import monotonic, time
 from uuid import uuid4
 from re import match
@@ -27,7 +27,7 @@ from Code_dot.database.verification import (
 )
 from ..helper.languages import Language
 from ..helper.telegram_helper.bot_commands import BotCommands
-from ..helper.telegram_helper.button_build import ButtonMaker
+from ..helper.telegram_helper.button_build import ButtonMaker, ButtonStyle
 from ..helper.telegram_helper.filters import CustomFilters
 from ..helper.telegram_helper.tg_utils import chat_info
 from ..helper.telegram_helper.message_utils import (
@@ -180,7 +180,11 @@ async def _start_verification_gate(message, user_id):
 
 @new_task
 async def start(_, message):
-    userid = message.from_user.id
+    sender = getattr(message, "from_user", None)
+    if sender is None:
+        LOGGER.warning("Ignoring /start update without a Telegram user")
+        return
+    userid = sender.id
     if await _start_verification_gate(message, userid):
         return
     user_name = message.from_user.first_name if message.from_user else "User"
@@ -272,7 +276,10 @@ async def start(_, message):
 
 @new_task
 async def start_cb(_, query):
-    user_id = query.from_user.id
+    sender = getattr(query, "from_user", None)
+    if sender is None:
+        return
+    user_id = sender.id
     data = query.data.split()
     if len(data) < 3 or data[0] != "start":
         return await query.answer("Invalid request!", show_alert=True)
@@ -301,7 +308,11 @@ async def start_cb(_, query):
 
 @new_task
 async def login(_, message):
-    if message.from_user and await _start_verification_gate(message, message.from_user.id):
+    sender = getattr(message, "from_user", None)
+    if sender is None:
+        LOGGER.warning("Ignoring /login update without a Telegram user")
+        return
+    if await _start_verification_gate(message, sender.id):
         return
     if Config.LOGIN_PASS is None:
         return await send_message(message, "<blockquote>Login password feature is not enabled.</blockquote>")
@@ -343,7 +354,11 @@ async def ping(_, message):
 
 @new_task
 async def log(_, message):
-    uid = message.from_user.id
+    sender = getattr(message, "from_user", None)
+    if sender is None:
+        LOGGER.warning("Ignoring /log update without a Telegram user")
+        return
+    uid = sender.id
     buttons = ButtonMaker()
     buttons.data_button("Log Disp", f"log {uid} disp")
     buttons.data_button("Web Log", f"log {uid} web")
@@ -353,9 +368,14 @@ async def log(_, message):
 
 @new_task
 async def log_cb(_, query):
-    data = query.data.split()
-    message = query.message
-    user_id = query.from_user.id
+    sender = getattr(query, "from_user", None)
+    data = (getattr(query, "data", "") or "").split()
+    message = getattr(query, "message", None)
+    if sender is None or len(data) < 3 or data[0] != "log":
+        if sender is not None:
+            await query.answer("Invalid request!", show_alert=True)
+        return
+    user_id = sender.id
     if user_id != int(data[1]):
         await query.answer("This menu is not for you!", show_alert=True)
     elif data[2] == "close":
