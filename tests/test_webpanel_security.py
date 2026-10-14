@@ -62,6 +62,21 @@ class WebPanelSecurityTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             panel_auth.create_ticket(1001, "short", 120)
 
+    def test_fast_transfer_settings_are_bounded(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            target = str(Path(tmp) / "runtime.json")
+            with patch.dict(os.environ, {"LEECH_DOT_RUNTIME_SETTINGS": target}):
+                saved = runtime_settings.write_runtime_overrides({
+                    "USE_HYPER": True,
+                    "HYPER_THREADS": 999,
+                    "HYPER_PIPELINE": 1,
+                    "HYPER_CHUNK": 99999999,
+                })
+                self.assertTrue(saved["USE_HYPER"])
+                self.assertEqual(saved["HYPER_THREADS"], 64)
+                self.assertEqual(saved["HYPER_PIPELINE"], 4)
+                self.assertEqual(saved["HYPER_CHUNK"], 16777216)
+
     def test_unknown_runtime_setting_is_rejected(self):
         with self.assertRaises(ValueError):
             runtime_settings.write_runtime_overrides({"BOT_TOKEN": "not-allowed"})
