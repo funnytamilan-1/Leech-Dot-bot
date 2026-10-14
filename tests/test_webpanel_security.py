@@ -26,6 +26,7 @@ class WebPanelSecurityTests(unittest.TestCase):
         ticket = panel_auth.create_ticket(1001, secret, 120)
         self.assertEqual(panel_auth.verify_ticket(ticket, secret, {1001})["uid"], 1001)
         self.assertIsNone(panel_auth.verify_ticket(ticket, secret, {1002}))
+        self.assertIsNone(panel_auth.verify_ticket(ticket, "different-secret-with-enough-length-123", {1001}))
 
     def test_ticket_tampering_is_rejected(self):
         secret = "test-secret-value-that-is-at-least-32-characters"
@@ -53,6 +54,13 @@ class WebPanelSecurityTests(unittest.TestCase):
                 self.assertTrue(saved["START_SHORTENER_REQUIRED"])
                 self.assertEqual(saved["START_SHORTENER_LINK_TTL"], 86400)
                 self.assertEqual(runtime_settings.read_runtime_overrides(), saved)
+
+    def test_admin_id_parser_accepts_owner_and_sudo_users(self):
+        self.assertEqual(panel_auth.parse_admin_ids(1001, "1002, 1003,invalid"), {1001, 1002, 1003})
+
+    def test_short_secret_is_rejected(self):
+        with self.assertRaises(ValueError):
+            panel_auth.create_ticket(1001, "short", 120)
 
     def test_unknown_runtime_setting_is_rejected(self):
         with self.assertRaises(ValueError):
