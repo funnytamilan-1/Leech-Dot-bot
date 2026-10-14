@@ -280,7 +280,7 @@ async def start_cb(_, query):
     if sender is None:
         return
     user_id = sender.id
-    data = query.data.split()
+    data = (getattr(query, "data", "") or "").split()
     if len(data) < 3 or data[0] != "start":
         return await query.answer("Invalid request!", show_alert=True)
     input_token = data[2]
@@ -371,7 +371,13 @@ async def log_cb(_, query):
     sender = getattr(query, "from_user", None)
     data = (getattr(query, "data", "") or "").split()
     message = getattr(query, "message", None)
-    if sender is None or len(data) < 3 or data[0] != "log":
+    if (
+        sender is None
+        or message is None
+        or len(data) < 3
+        or data[0] != "log"
+        or not data[1].isdigit()
+    ):
         if sender is not None:
             await query.answer("Invalid request!", show_alert=True)
         return
