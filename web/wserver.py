@@ -383,7 +383,7 @@ async def webpanel_update_settings(request: Request):
     allowed = {"START_SHORTENER_REQUIRED", "START_SHORTENER_LINK_TTL", "START_SHORTENER_SESSION_TTL"}
     if not isinstance(body, dict) or not body or set(body) - allowed:
         raise HTTPException(status_code=400, detail="Unsupported settings") from None
-    from bot.helper.ext_utils.runtime_settings import write_runtime_overrides
+    from web.runtime_settings import write_runtime_overrides
 
     try:
         saved = write_runtime_overrides(body)
