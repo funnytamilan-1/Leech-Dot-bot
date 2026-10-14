@@ -467,10 +467,10 @@ async def get_buttons(key=None, edit_type=None, edit_mode=False):
         buttons.data_button("Back", "botset back", position="footer")
         buttons.data_button("Close", "botset close", position="footer", style=ButtonStyle.DANGER)
         msg = (
-            "<b>🔗 Shortener Settings</b>\\n\\n"
-            f"<blockquote>• Verification required: <b>{'ON' if required else 'OFF'}</b>\\n"
-            f"• Verification link expires after: <code>{Config.START_SHORTENER_LINK_TTL}</code> seconds\\n"
-            f"• Verified session lasts: <code>{Config.START_SHORTENER_SESSION_TTL}</code> seconds\\n\\n"
+            "<b>🔗 Shortener Settings</b>\n\n"
+            f"<blockquote>• Verification required: <b>{'ON' if required else 'OFF'}</b>\n"
+            f"• Verification link expires after: <code>{Config.START_SHORTENER_LINK_TTL}</code> seconds\n"
+            f"• Verified session lasts: <code>{Config.START_SHORTENER_SESSION_TTL}</code> seconds\n\n"
             "Configure a compatible shortener in <code>shortener.txt</code> or set the protected API value. "
             "Enable verification only after the provider is configured.</blockquote>"
         )
