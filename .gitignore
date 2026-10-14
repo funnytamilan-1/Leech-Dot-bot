@@ -40,3 +40,5 @@ DESIGN.md
 .env
 .venv/
 node_modules/
+# VPS runtime settings managed by the authenticated web panel
+runtime_settings.json

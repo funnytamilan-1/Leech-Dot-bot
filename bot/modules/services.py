@@ -96,7 +96,13 @@ async def _start_verification_gate(message, user_id):
     without server-side callbacks cannot cryptographically prove that every
     intermediate ad/task was completed.
     """
-    if not Config.START_SHORTENER_REQUIRED or user_id == Config.OWNER_ID:
+    from web.runtime_settings import read_runtime_overrides
+
+    overrides = read_runtime_overrides()
+    required = overrides.get("START_SHORTENER_REQUIRED", Config.START_SHORTENER_REQUIRED)
+    link_ttl = overrides.get("START_SHORTENER_LINK_TTL", Config.START_SHORTENER_LINK_TTL)
+    session_ttl = overrides.get("START_SHORTENER_SESSION_TTL", Config.START_SHORTENER_SESSION_TTL)
+    if not required or user_id == Config.OWNER_ID:
         return False
 
     command_args = getattr(message, "command", []) or []
@@ -114,7 +120,7 @@ async def _start_verification_gate(message, user_id):
             )
             return True
         await to_thread(
-            mark_start_verified, user_id, Config.START_SHORTENER_SESSION_TTL
+            mark_start_verified, user_id, session_ttl
         )
         await send_message(
             message,
@@ -140,7 +146,7 @@ async def _start_verification_gate(message, user_id):
 
     token = token_urlsafe(24)
     await to_thread(
-        issue_start_token, token, user_id, Config.START_SHORTENER_LINK_TTL
+        issue_start_token, token, user_id, link_ttl
     )
     target_url = f"https://t.me/{bot_info.username}?start=sdv_{token}"
     shortened_url = await short_url(target_url)

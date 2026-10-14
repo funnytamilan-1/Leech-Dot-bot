@@ -40,6 +40,7 @@ from ...core.cpu import allowed_cpus
 from .mem_guard import budget
 from ...core.tg_client import TgClient
 from ..telegram_helper.tg_transfer import MB, HypertgTransfer, media_of
+from web.runtime_settings import read_runtime_overrides
 from .bot_utils import parse_dest
 
 _load_lock = Lock()
@@ -66,12 +67,16 @@ class HypertgDownload(HypertgTransfer):
 
     def __init__(self, obj):
         super().__init__(obj)
-        self.chunk_size = max(Config.HYPER_CHUNK or 512 * self.KB, self._MIN_CHUNK)
-        self.num_parts = Config.HYPER_THREADS or max(
+        runtime_settings = read_runtime_overrides()
+        chunk_size = runtime_settings.get("HYPER_CHUNK", Config.HYPER_CHUNK)
+        threads = runtime_settings.get("HYPER_THREADS", Config.HYPER_THREADS)
+        pipeline = runtime_settings.get("HYPER_PIPELINE", Config.HYPER_PIPELINE)
+        self.chunk_size = max(chunk_size or 512 * self.KB, self._MIN_CHUNK)
+        self.num_parts = threads or max(
             self._LOW_WORKERS, min(self._HIGH_WORKERS, self.num_clients)
         )
         base_pipe = max(
-            Config.HYPER_PIPELINE or self._DEFAULT_PIPELINE, self._MIN_PIPELINE
+            pipeline or self._DEFAULT_PIPELINE, self._MIN_PIPELINE
         )
         self.pipeline_depth = max(
             base_pipe // max(self.num_parts, 1), self._MIN_PIPELINE

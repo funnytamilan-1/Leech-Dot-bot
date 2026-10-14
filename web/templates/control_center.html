@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="no-referrer"><title>Leech Dot Bot · Control Center</title>
+<style>
+:root{color-scheme:dark;font-family:Inter,system-ui,sans-serif;background:#0b1020;color:#e8edf7}*{box-sizing:border-box}body{margin:0;padding:24px;background:radial-gradient(circle at top right,#1a2850,#0b1020 55%);min-height:100vh}main{max-width:900px;margin:auto}.brand{color:#aab9ff;letter-spacing:.14em;font-size:.78rem;font-weight:800}h1{margin:.5rem 0;font-size:clamp(1.7rem,4vw,2.5rem)}p{color:#b5c0d7;line-height:1.6}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;margin:22px 0}.card{background:#121a2c;border:1px solid #2a3651;border-radius:16px;padding:18px;margin:14px 0}.card h2{font-size:1rem;margin:0 0 10px}.value{font-size:1.1rem;font-weight:700;overflow-wrap:anywhere}.muted{font-size:.9rem;color:#9daac4}.status{display:inline-block;border-radius:999px;background:#1b3440;padding:5px 10px;color:#9be7c1;font-size:.8rem}button{background:#9eafff;color:#10152a;border:0;border-radius:10px;padding:11px 15px;font-weight:800;cursor:pointer}input[type=number]{display:block;margin-top:7px;background:#0b1020;border:1px solid #344361;color:#fff;border-radius:8px;padding:10px;width:100%;max-width:300px}input[type=checkbox]{margin-right:8px;transform:scale(1.2)}.error{color:#ff9eae}.ok{color:#9be7c1}a{color:#b9c5ff}footer{color:#7f8ba5;font-size:.85rem;margin-top:24px}
+</style></head>
+<body><main><div class="brand">CODE_DOTS · LEECH DOT BOT</div><h1>Admin Control Center</h1><p>Secure VPS dashboard. Only the bot owner and configured sudo admins can authenticate.</p><div id="notice" class="muted">Verifying your admin session…</div>
+<section id="dashboard" hidden><div class="grid">
+<div class="card"><h2>Authentication</h2><div class="value status">Admin session active</div><p class="muted">Protected by an HttpOnly cookie.</p></div>
+<div class="card"><h2>Shortener verification</h2><div id="shortener" class="value">Loading…</div><p class="muted">Runtime state from bot configuration.</p></div>
+<div class="card"><h2>Rename system</h2><div id="rename" class="value">Loading…</div><p class="muted">Current filename substitution configuration.</p></div>
+<div class="card"><h2>Task processing</h2><div id="tasks" class="value">Configured</div><p class="muted">Parallelism and queue limits are controlled by the VPS configuration.</p></div></div>
+<div class="card"><h2>Fast Telegram file processing</h2><p>Control parallel Telegram download workers. More workers can improve speed but also increase CPU, RAM and Telegram flood-wait risk.</p>
+<label><input type="checkbox" id="useHyper">Enable Hyper transfer</label>
+<p><label>Worker threads (0 = automatic)<input id="hyperThreads" type="number" min="0" max="64" step="1"></label></p>
+<p><label>Pipeline depth (4–256)<input id="hyperPipeline" type="number" min="4" max="256" step="1"></label></p>
+<p><label>Chunk size in bytes (65536–16777216)<input id="hyperChunk" type="number" min="65536" max="16777216" step="65536"></label></p></div>
+<div class="card"><h2>File rename help</h2><p>Use <code>/mirror LINK -n "New Name"</code> or <code>/leech LINK -n "New Name"</code> for a custom filename.</p><p>Use <code>-ns old/new/s</code> for filename substitution (add <code>s</code> for case-sensitive matching). The rename rules remain per-task so one admin’s setting does not unexpectedly rename everyone’s files.</p></div>
+<div class="card"><h2>Shortener protection controls</h2><p>Changes are saved to a private VPS runtime override file and take effect without restarting the bot.</p>
+<label><input type="checkbox" id="required">Require start verification</label>
+<p><label>Verification link lifetime (seconds)<input id="linkttl" type="number" min="60" max="86400" step="60"></label></p>
+<p><label>Verified session lifetime (seconds)<input id="sessionttl" type="number" min="60" max="86400" step="60"></label></p>
+<button id="save">Save protection settings</button> <span id="saveStatus" class="muted"></span></div>
+<div class="card"><h2>Security checklist</h2><p>Keep <code>WEBPANEL_SECRET</code> private, use HTTPS, and rotate the secret if a panel link is exposed. Tickets expire automatically.</p><p><a href="/app/files">Open file manager</a> · <a href="/app/planner">Open planner</a></p><button id="refresh">Refresh status</button></div></section>
+<footer>Made by @Code_Dots · Partner @CodeRips</footer></main>
+<script>
+const notice=document.getElementById('notice');
+async function authenticate(){
+ const params=new URLSearchParams(location.hash.slice(1));const ticket=params.get('ticket');
+ if(ticket){history.replaceState(null,'',location.pathname);const a=await fetch('/api/webpanel/auth',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify({ticket})});if(!a.ok)throw new Error('Admin link invalid or expired. Send /webpanel to the bot for a fresh link.');}
+ const r=await fetch('/api/webpanel/status',{credentials:'same-origin',cache:'no-store'});if(!r.ok)throw new Error('Authentication required. Open a fresh link from Telegram.');
+ const d=await r.json();document.getElementById('shortener').textContent=d.shortener_required?'Verification enabled':'Verification disabled';document.getElementById('rename').textContent=d.name_swap_enabled?'Name substitution enabled':'Default naming';document.getElementById('tasks').textContent='Max tasks: '+d.max_tasks;document.getElementById('useHyper').checked=!!d.use_hyper;document.getElementById('hyperThreads').value=d.hyper_threads;document.getElementById('hyperPipeline').value=d.hyper_pipeline;document.getElementById('hyperChunk').value=d.hyper_chunk;document.getElementById('required').checked=!!d.shortener_required;document.getElementById('linkttl').value=d.link_ttl;document.getElementById('sessionttl').value=d.session_ttl;document.getElementById('dashboard').hidden=false;notice.textContent='Authenticated successfully.';notice.className='ok';
+}
+function showError(e){notice.textContent=e.message||'Authentication failed.';notice.className='error';}
+document.getElementById('refresh').addEventListener('click',()=>authenticate().catch(showError));
+document.getElementById('save').addEventListener('click',async()=>{
+ const status=document.getElementById('saveStatus');const payload={START_SHORTENER_REQUIRED:document.getElementById('required').checked,START_SHORTENER_LINK_TTL:Number(document.getElementById('linkttl').value),START_SHORTENER_SESSION_TTL:Number(document.getElementById('sessionttl').value),USE_HYPER:document.getElementById('useHyper').checked,HYPER_THREADS:Number(document.getElementById('hyperThreads').value),HYPER_PIPELINE:Number(document.getElementById('hyperPipeline').value),HYPER_CHUNK:Number(document.getElementById('hyperChunk').value)};
+ if(!Number.isInteger(payload.START_SHORTENER_LINK_TTL)||payload.START_SHORTENER_LINK_TTL<60||payload.START_SHORTENER_LINK_TTL>86400||!Number.isInteger(payload.START_SHORTENER_SESSION_TTL)||payload.START_SHORTENER_SESSION_TTL<60||payload.START_SHORTENER_SESSION_TTL>86400){status.textContent='TTL must be 60–86400 seconds.';status.className='error';return;}
+ if(!Number.isInteger(payload.HYPER_THREADS)||payload.HYPER_THREADS<0||payload.HYPER_THREADS>64||!Number.isInteger(payload.HYPER_PIPELINE)||payload.HYPER_PIPELINE<4||payload.HYPER_PIPELINE>256||!Number.isInteger(payload.HYPER_CHUNK)||payload.HYPER_CHUNK<65536||payload.HYPER_CHUNK>16777216){status.textContent='Fast transfer values are outside their allowed ranges.';status.className='error';return;}
+ status.textContent='Saving…';try{const r=await fetch('/api/webpanel/settings',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify(payload)});const d=await r.json();if(!r.ok)throw new Error(d.detail||'Save failed');status.textContent='Saved. Changes are active.';status.className='ok';await authenticate();}catch(e){status.textContent=e.message;status.className='error';}
+});
+authenticate().catch(showError);
+</script></body></html>
