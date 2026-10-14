@@ -4,11 +4,38 @@ import os
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 
-_ALLOWED = {"START_SHORTENER_REQUIRED": bool, "START_SHORTENER_LINK_TTL": int, "START_SHORTENER_SESSION_TTL": int}
+_ALLOWED = {
+    "START_SHORTENER_REQUIRED": bool,
+    "START_SHORTENER_LINK_TTL": int,
+    "START_SHORTENER_SESSION_TTL": int,
+    "USE_HYPER": bool,
+    "HYPER_THREADS": int,
+    "HYPER_PIPELINE": int,
+    "HYPER_CHUNK": int,
+}
+_LIMITS = {
+    "START_SHORTENER_LINK_TTL": (60, 86400),
+    "START_SHORTENER_SESSION_TTL": (60, 86400),
+    "HYPER_THREADS": (0, 64),
+    "HYPER_PIPELINE": (4, 256),
+    "HYPER_CHUNK": (65536, 16777216),
+}
 
 
 def _settings_path():
     return Path(os.getenv("LEECH_DOT_RUNTIME_SETTINGS", "runtime_settings.json"))
+
+
+def _validate_value(key, value):
+    kind = _ALLOWED[key]
+    if kind is bool:
+        if not isinstance(value, bool):
+            raise ValueError(f"{key} must be boolean")
+        return value
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(f"{key} must be an integer")
+    low, high = _LIMITS[key]
+    return max(low, min(value, high))
 
 
 def read_runtime_overrides():
@@ -18,12 +45,12 @@ def read_runtime_overrides():
         if not isinstance(data, dict):
             return {}
         result = {}
-        for key, kind in _ALLOWED.items():
-            value = data.get(key)
-            if kind is bool and isinstance(value, bool):
-                result[key] = value
-            elif kind is int and isinstance(value, int) and not isinstance(value, bool):
-                result[key] = max(60, min(value, 86400))
+        for key, value in data.items():
+            if key in _ALLOWED:
+                try:
+                    result[key] = _validate_value(key, value)
+                except ValueError:
+                    continue
         return result
     except (OSError, ValueError, TypeError):
         return {}
@@ -34,19 +61,16 @@ def write_runtime_overrides(values):
         raise ValueError("Unsupported runtime setting")
     current = read_runtime_overrides()
     for key, value in values.items():
-        kind = _ALLOWED[key]
-        if kind is bool:
-            if not isinstance(value, bool):
-                raise ValueError(f"{key} must be boolean")
-        elif isinstance(value, bool) or not isinstance(value, int):
-            raise ValueError(f"{key} must be an integer")
-        else:
-            value = max(60, min(value, 86400))
-        current[key] = value
+        current[key] = _validate_value(key, value)
     path = _settings_path()
     path.parent.mkdir(parents=True, exist_ok=True)
-    with NamedTemporaryFile("w", encoding="utf-8", dir=str(path.parent), delete=False) as stream:
-        json.dump(current, stream, separators=(",", ":"))
-        temp_name = stream.name
-    os.replace(temp_name, path)
+    temp_name = None
+    try:
+        with NamedTemporaryFile("w", encoding="utf-8", dir=str(path.parent), delete=False) as stream:
+            json.dump(current, stream, separators=(",", ":"))
+            temp_name = stream.name
+        os.replace(temp_name, path)
+    finally:
+        if temp_name and os.path.exists(temp_name):
+            os.unlink(temp_name)
     return current
