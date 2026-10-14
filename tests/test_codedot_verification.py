@@ -35,6 +35,23 @@ class VerificationStoreTests(unittest.TestCase):
         self.assertTrue(verification.is_verified(1001))
         self.assertFalse(verification.is_verified(1002))
 
+    def test_expired_token_cannot_be_consumed(self):
+        from unittest.mock import patch
+
+        with patch.object(verification.time, "time", return_value=1000):
+            verification.issue_token("expires-soon", 1001, 60)
+        with patch.object(verification.time, "time", return_value=1061):
+            self.assertFalse(verification.consume_token("expires-soon", 1001))
+
+    def test_verified_session_expires(self):
+        from unittest.mock import patch
+
+        with patch.object(verification.time, "time", return_value=1000):
+            verification.mark_verified(1001, 60)
+            self.assertTrue(verification.is_verified(1001))
+        with patch.object(verification.time, "time", return_value=1061):
+            self.assertFalse(verification.is_verified(1001))
+
 
 if __name__ == "__main__":
     unittest.main()
