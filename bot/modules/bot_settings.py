@@ -179,7 +179,13 @@ DEFAULT_DESP = {
     "GOFILE_FOLDER_ID": "Gofile.io folder ID.",
     "GOFILE_AUTO_CREATE_FOLDER": "Create folder per upload. Default: False.",
     "PIXELDRAIN_KEY": "PixelDrain API key.",
-    "PROTECTED_API": "ProtectedFiles.cc API key.",
+    "PROTECTED_API": "Legacy protected shortener API endpoint.",
+    "SHORTENER_API_URL": "Your custom shortener API endpoint (HTTPS).",
+    "SHORTENER_API_KEY": "Your custom shortener API key. Hidden in settings display.",
+    "SHORTENER_API_METHOD": "Custom shortener API request method: GET or POST.",
+    "SHORTENER_API_KEY_PARAM": "Parameter name used to send your shortener API key.",
+    "SHORTENER_URL_PARAM": "Parameter name used to send the long URL to shorten.",
+    "SHORTENER_RESPONSE_FIELD": "JSON response field containing the generated short URL (supports dot paths).",
     "START_SHORTENER_REQUIRED": "Require users to complete the configured shortener redirect before using /start. Enable only after a provider is configured.",
     "START_SHORTENER_LINK_TTL": "Lifetime of a one-time shortener verification link, in seconds (default: 900).",
     "START_SHORTENER_SESSION_TTL": "How long a user stays verified, in seconds (default: 86400).",
@@ -313,6 +319,7 @@ PROTECTED_VARS = {
     "OWNER_ID",
     "BOT_TOKEN",
     "DATABASE_URL",
+    "SHORTENER_API_KEY",
 }
 RESTART_VARS = {
     "STREAM_TOKENS",
@@ -460,8 +467,20 @@ async def get_buttons(key=None, edit_type=None, edit_mode=False):
             f"Verified Session TTL: {Config.START_SHORTENER_SESSION_TTL}s",
             "botset editvar START_SHORTENER_SESSION_TTL edit",
         )
+        api_key = Config.get("SHORTENER_API_KEY") or ""
+        api_method = (Config.get("SHORTENER_API_METHOD") or "GET").upper()
+        api_key_param = Config.get("SHORTENER_API_KEY_PARAM") or "api"
+        url_param = Config.get("SHORTENER_URL_PARAM") or "url"
+        response_field = Config.get("SHORTENER_RESPONSE_FIELD") or "shortenedUrl"
+        buttons.data_button("Custom API Endpoint", "botset editvar SHORTENER_API_URL edit")
+        buttons.data_button(f"API Key: {'SET' if api_key else 'NOT SET'}", "botset editvar SHORTENER_API_KEY edit")
+        buttons.data_button(f"Request Method: {api_method}", "botset editvar SHORTENER_API_METHOD edit")
+        buttons.data_button(f"API Key Parameter: {api_key_param}", "botset editvar SHORTENER_API_KEY_PARAM edit")
+        buttons.data_button(f"Long URL Parameter: {url_param}", "botset editvar SHORTENER_URL_PARAM edit")
+        buttons.data_button(f"Response JSON Field: {response_field}", "botset editvar SHORTENER_RESPONSE_FIELD edit")
+        buttons.data_button("Test Shortener API", "botset shortener_test")
         buttons.data_button(
-            "Protected Shortener API",
+            "Legacy Protected API",
             "botset editvar PROTECTED_API edit",
         )
         buttons.data_button("Back", "botset back", position="footer")
@@ -526,12 +545,15 @@ async def get_buttons(key=None, edit_type=None, edit_mode=False):
             msg = f"<b>⚙️ Variable Configuration: {key}</b>\n\n"
             msg += f"<blockquote>• <b>Description:</b> {DEFAULT_DESP.get(key, 'No description provided')}\n"
             value = Config.get(key)
-            if value == "":
+            if key == "SHORTENER_API_KEY":
+                value = "Configured (hidden)" if value else "Not configured"
+            elif value == "":
                 value = "None"
             msg += f"• <b>Current Value:</b> <code>{value}</code></blockquote>\n\n"
-            buttons.data_button(
-                "View Value", f"botset showvar {key}", position="header"
-            )
+            if key != "SHORTENER_API_KEY":
+                buttons.data_button(
+                    "View Value", f"botset showvar {key}", position="header"
+                )
             buttons.data_button(
                 "Back",
                 f"botset back {'setlimit' if key in LIMIT_VARS else 'var'}",
@@ -795,6 +817,24 @@ async def edit_variable(_, message, pre_message, key):
     elif key == "TORRENT_TIMEOUT":
         await TorrentManager.change_aria2_option("bt-stop-timeout", value)
         value = int(value)
+    elif key == "SHORTENER_API_URL":
+        value = value.strip()
+        if value:
+            from urllib.parse import urlsplit
+            parsed = urlsplit(value)
+            if parsed.scheme != "https" or not parsed.hostname:
+                await send_message(message, "Invalid endpoint! Use a complete HTTPS API URL.")
+                return await update_buttons(pre_message, "shortener")
+    elif key == "SHORTENER_API_METHOD":
+        value = value.strip().upper()
+        if value not in ("GET", "POST"):
+            await send_message(message, "Invalid method! Use GET or POST.")
+            return await update_buttons(pre_message, "shortener")
+    elif key in ("SHORTENER_API_KEY_PARAM", "SHORTENER_URL_PARAM", "SHORTENER_RESPONSE_FIELD"):
+        value = value.strip()
+        if not value:
+            await send_message(message, "This setting cannot be empty.")
+            return await update_buttons(pre_message, "shortener")
     elif key in ("START_SHORTENER_LINK_TTL", "START_SHORTENER_SESSION_TTL"):
         try:
             value = int(value)
@@ -1116,6 +1156,9 @@ async def edit_ff_or_dump(_, message, pre_message, target_var, key):
 
 @new_task
 async def show_var_value(_, query, key):
+    if key == "SHORTENER_API_KEY":
+        await query.answer("API key is hidden for security.", show_alert=True)
+        return
     value = f"{Config.get(key)}"
     if value == "":
         value = "None"
@@ -1638,6 +1681,18 @@ async def edit_bot_settings(client, query):
         key = data[2]
         value = data[3]
         await toggle_onoff_var(client, query, message, key, value)
+    elif data[1] == "shortener_test":
+        try:
+            import asyncio
+            from ..helper.ext_utils.shortener_utils import _short_url_sync
+
+            test_url = await asyncio.to_thread(_short_url_sync, "https://example.com")
+            if test_url == "https://example.com":
+                await query.answer("API returned the original URL; check your response field and API settings.", show_alert=True)
+            else:
+                await query.answer(f"API test successful: {test_url[:180]}", show_alert=True)
+        except Exception as exc:
+            await query.answer(f"API test failed: {type(exc).__name__}. Check endpoint, key, method and response field.", show_alert=True)
     elif data[1] == "shortener_toggle":
         await query.answer()
         enabled = len(data) > 2 and data[2] == "on"
