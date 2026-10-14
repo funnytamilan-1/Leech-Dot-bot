@@ -454,44 +454,65 @@ async def get_buttons(key=None, edit_type=None, edit_mode=False):
         msg = f"<b>🎬 Select FFmpeg Preset Key to Delete:</b>\n\n<blockquote>Available keys: <code>{', '.join(ff_items) or 'None'}</code></blockquote>"
     elif key == "shortener":
         required = bool(Config.START_SHORTENER_REQUIRED)
-        buttons.data_button(
-            f"Verification Required: {'ON' if required else 'OFF'}",
-            f"botset shortener_toggle {'off' if required else 'on'}",
-            style=ButtonStyle.SUCCESS if required else ButtonStyle.DANGER,
-        )
-        buttons.data_button(
-            f"Verification Link TTL: {Config.START_SHORTENER_LINK_TTL}s",
-            "botset editvar START_SHORTENER_LINK_TTL edit",
-        )
-        buttons.data_button(
-            f"Verified Session TTL: {Config.START_SHORTENER_SESSION_TTL}s",
-            "botset editvar START_SHORTENER_SESSION_TTL edit",
-        )
+        provider_configured = Config.shortener_provider_configured()
+        custom_url = Config.get("SHORTENER_API_URL") or ""
         api_key = Config.get("SHORTENER_API_KEY") or ""
         api_method = (Config.get("SHORTENER_API_METHOD") or "GET").upper()
         api_key_param = Config.get("SHORTENER_API_KEY_PARAM") or "api"
         url_param = Config.get("SHORTENER_URL_PARAM") or "url"
         response_field = Config.get("SHORTENER_RESPONSE_FIELD") or "shortenedUrl"
-        buttons.data_button("Custom API Endpoint", "botset editvar SHORTENER_API_URL edit")
-        buttons.data_button(f"API Key: {'SET' if api_key else 'NOT SET'}", "botset editvar SHORTENER_API_KEY edit")
-        buttons.data_button(f"Request Method: {api_method}", "botset editvar SHORTENER_API_METHOD edit")
-        buttons.data_button(f"API Key Parameter: {api_key_param}", "botset editvar SHORTENER_API_KEY_PARAM edit")
-        buttons.data_button(f"Long URL Parameter: {url_param}", "botset editvar SHORTENER_URL_PARAM edit")
-        buttons.data_button(f"Response JSON Field: {response_field}", "botset editvar SHORTENER_RESPONSE_FIELD edit")
-        buttons.data_button("Test Shortener API", "botset shortener_test")
+        if custom_url and api_key:
+            provider_status = "Custom API configured"
+        elif Config.PROTECTED_API:
+            provider_status = "Legacy Protected API configured"
+        elif shortener_dict:
+            provider_status = f"File providers configured ({len(shortener_dict)})"
+        elif provider_configured:
+            provider_status = "Provider configured"
+        else:
+            provider_status = "Not configured — verification stays optional"
+
         buttons.data_button(
-            "Legacy Protected API",
-            "botset editvar PROTECTED_API edit",
+            f"Verification: {'ON' if required else 'OFF'}",
+            f"botset shortener_toggle {'off' if required else 'on'}",
+            style=ButtonStyle.SUCCESS if required else ButtonStyle.DANGER,
+        )
+        buttons.data_button("Set API Endpoint", "botset editvar SHORTENER_API_URL edit")
+        buttons.data_button(
+            f"API Key: {'SET (hidden)' if api_key else 'NOT SET'}",
+            "botset editvar SHORTENER_API_KEY edit",
+        )
+        buttons.data_button(f"Method: {api_method}", "botset editvar SHORTENER_API_METHOD edit")
+        buttons.data_button(f"API Key Param: {api_key_param}", "botset editvar SHORTENER_API_KEY_PARAM edit")
+        buttons.data_button(f"Long URL Param: {url_param}", "botset editvar SHORTENER_URL_PARAM edit")
+        buttons.data_button(f"Response JSON Field: {response_field}", "botset editvar SHORTENER_RESPONSE_FIELD edit")
+        buttons.data_button("🧪 Test Provider", "botset shortener_test", style=ButtonStyle.SUCCESS)
+        buttons.data_button("🧹 Clear Custom API", "botset shortener_clear custom")
+        buttons.data_button("Legacy Protected API", "botset editvar PROTECTED_API edit")
+        buttons.data_button("Clear Legacy API", "botset shortener_clear legacy")
+        buttons.data_button(
+            f"Link TTL: {Config.START_SHORTENER_LINK_TTL}s",
+            "botset editvar START_SHORTENER_LINK_TTL edit",
+        )
+        buttons.data_button(
+            f"Session TTL: {Config.START_SHORTENER_SESSION_TTL}s",
+            "botset editvar START_SHORTENER_SESSION_TTL edit",
         )
         buttons.data_button("Back", "botset back", position="footer")
         buttons.data_button("Close", "botset close", position="footer", style=ButtonStyle.DANGER)
         msg = (
-            "<b>🔗 Shortener Settings</b>\n\n"
-            f"<blockquote>• Verification required: <b>{'ON' if required else 'OFF'}</b>\n"
-            f"• Verification link expires after: <code>{Config.START_SHORTENER_LINK_TTL}</code> seconds\n"
-            f"• Verified session lasts: <code>{Config.START_SHORTENER_SESSION_TTL}</code> seconds\n\n"
-            "Configure a compatible shortener in <code>shortener.txt</code> or set the protected API value. "
-            "Enable verification only after the provider is configured.</blockquote>"
+            "<b>🔗 Shortener Configuration</b>\n\n"
+            f"<blockquote>• <b>Provider:</b> {provider_status}\n"
+            f"• <b>Verification:</b> {'ON' if required else 'OFF'}\n"
+            f"• <b>Link expiry:</b> <code>{Config.START_SHORTENER_LINK_TTL}</code> seconds\n"
+            f"• <b>Verified session:</b> <code>{Config.START_SHORTENER_SESSION_TTL}</code> seconds</blockquote>\n\n"
+            "<b>Setup</b>\n"
+            "1. Set the HTTPS API endpoint and API key.\n"
+            "2. Set the method, parameter names, and response JSON field to match your provider.\n"
+            "3. Tap <b>Test Provider</b>.\n"
+            "4. Turn verification ON only after the test succeeds.\n\n"
+            "<i>Every change is saved to the bot database. The API key is never shown in the menu. "
+            "You can also upload <code>shortener.txt</code> from Private Files. Shortener is optional.</i>"
         )
     elif key == "dumpcmds":
         buttons.data_button("Add/Edit DUMP", "botset editdump edit")
@@ -978,7 +999,21 @@ async def edit_variable(_, message, pre_message, key):
     Config.set(key, value)
     if key == "CMD_SUFFIX":
         BotCommands.refresh_commands()
-    await update_buttons(pre_message, key, "editvar", False)
+    shortener_keys = {
+        "SHORTENER_API_URL",
+        "SHORTENER_API_KEY",
+        "SHORTENER_API_METHOD",
+        "SHORTENER_API_KEY_PARAM",
+        "SHORTENER_URL_PARAM",
+        "SHORTENER_RESPONSE_FIELD",
+        "PROTECTED_API",
+        "START_SHORTENER_LINK_TTL",
+        "START_SHORTENER_SESSION_TTL",
+    }
+    if key in shortener_keys:
+        await update_buttons(pre_message, "shortener")
+    else:
+        await update_buttons(pre_message, key, "editvar", False)
     await delete_message(message)
     await database.update_config({key: value})
     if key in ["SEARCH_PLUGINS", "SEARCH_API_LINK"]:
@@ -1683,16 +1718,53 @@ async def edit_bot_settings(client, query):
         await toggle_onoff_var(client, query, message, key, value)
     elif data[1] == "shortener_test":
         try:
+            if not Config.shortener_provider_configured():
+                await query.answer(
+                    "No provider configured. Set a custom API or upload shortener.txt first.",
+                    show_alert=True,
+                )
+                return
             import asyncio
             from ..helper.ext_utils.shortener_utils import _short_url_sync
 
             test_url = await asyncio.to_thread(_short_url_sync, "https://example.com")
             if test_url == "https://example.com":
-                await query.answer("API returned the original URL; check your response field and API settings.", show_alert=True)
+                await query.answer(
+                    "Provider returned the original URL. Check API endpoint, key, parameters and response JSON field.",
+                    show_alert=True,
+                )
             else:
-                await query.answer(f"API test successful: {test_url[:180]}", show_alert=True)
+                await query.answer("Shortener test succeeded. A valid shortened URL was returned.", show_alert=True)
         except Exception as exc:
-            await query.answer(f"API test failed: {type(exc).__name__}. Check endpoint, key, method and response field.", show_alert=True)
+            LOGGER.warning("Shortener settings test failed: %s", type(exc).__name__)
+            await query.answer(
+                f"Test failed: {type(exc).__name__}. Check endpoint, key, method, parameters and response field.",
+                show_alert=True,
+            )
+    elif data[1] == "shortener_clear":
+        target = data[2] if len(data) > 2 else ""
+        if target == "custom":
+            updates = {
+                "SHORTENER_API_URL": "",
+                "SHORTENER_API_KEY": "",
+                "SHORTENER_API_METHOD": "GET",
+                "SHORTENER_API_KEY_PARAM": "api",
+                "SHORTENER_URL_PARAM": "url",
+                "SHORTENER_RESPONSE_FIELD": "shortenedUrl",
+            }
+        elif target == "legacy":
+            updates = {"PROTECTED_API": ""}
+        else:
+            await query.answer("Unknown clear action.", show_alert=True)
+            return
+        for config_key, config_value in updates.items():
+            Config.set(config_key, config_value)
+        await database.update_config(updates)
+        if Config.START_SHORTENER_REQUIRED and not Config.shortener_provider_configured():
+            Config.set("START_SHORTENER_REQUIRED", False)
+            await database.update_config({"START_SHORTENER_REQUIRED": False})
+        await query.answer("Shortener settings cleared and saved.", show_alert=True)
+        await update_buttons(message, "shortener")
     elif data[1] == "shortener_toggle":
         enabled = len(data) > 2 and data[2] == "on"
         if enabled and not Config.shortener_provider_configured():
