@@ -51,6 +51,22 @@ def _validated_short_url(value):
     return value
 
 
+def _response_json_or_short_url(response, provider_name):
+    """Parse JSON APIs, while supporting providers that return a plain URL."""
+    try:
+        return response.json()
+    except ValueError as exc:
+        raw = (response.text or "").strip()
+        plain_url = _validated_short_url(raw)
+        if plain_url:
+            return plain_url
+        content_type = (response.headers.get("Content-Type") or "unknown").split(";", 1)[0]
+        raise ValueError(
+            f"{provider_name} returned non-JSON data "
+            f"(HTTP {response.status_code}, content-type={content_type})"
+        ) from exc
+
+
 def _short_url_sync(longurl):
     """Synchronous provider adapter; called through asyncio.to_thread."""
     disable_warnings()
@@ -78,14 +94,17 @@ def _short_url_sync(longurl):
             params=request_data if method == "GET" else None,
             json=request_data if method == "POST" else None,
         )
-        payload = response.json()
-        result = payload
-        for field in response_field.split("."):
-            if not isinstance(result, dict):
-                result = None
-                break
-            result = result.get(field)
-        result = _validated_short_url(result)
+        payload = _response_json_or_short_url(response, "Custom shortener API")
+        if isinstance(payload, str):
+            result = _validated_short_url(payload)
+        else:
+            result = payload
+            for field in response_field.split("."):
+                if not isinstance(result, dict):
+                    result = None
+                    break
+                result = result.get(field)
+            result = _validated_short_url(result)
         if result:
             return result
         raise ValueError("Custom shortener API returned no valid HTTPS URL")
