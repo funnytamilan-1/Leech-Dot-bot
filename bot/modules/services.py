@@ -96,7 +96,7 @@ async def _start_verification_gate(message, user_id):
     without server-side callbacks cannot cryptographically prove that every
     intermediate ad/task was completed.
     """
-    from ..helper.ext_utils.runtime_settings import read_runtime_overrides
+    from web.runtime_settings import read_runtime_overrides
 
     overrides = read_runtime_overrides()
     required = overrides.get("START_SHORTENER_REQUIRED", Config.START_SHORTENER_REQUIRED)
