@@ -351,7 +351,7 @@ async def webpanel_auth(request: Request):
 async def webpanel_status(request: Request):
     if not _webpanel_session(request):
         raise HTTPException(status_code=401, detail="Admin authentication required")
-    from bot.helper.ext_utils.runtime_settings import read_runtime_overrides
+    from web.runtime_settings import read_runtime_overrides
 
     settings = _webpanel_settings()
     overrides = read_runtime_overrides()
