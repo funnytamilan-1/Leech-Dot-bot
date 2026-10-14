@@ -181,6 +181,8 @@ START_SHORTENER_SESSION_TTL = 86400
 
 Configure at least one provider in `shortener.txt` (one `domain API_KEY` pair per line) or configure `PROTECTED_API`. Keep API keys private. If the provider is unavailable, the gate fails closed instead of handing out an unshortened link.
 
+The owner can also manage `START_SHORTENER_REQUIRED`, `START_SHORTENER_LINK_TTL`, and `START_SHORTENER_SESSION_TTL` from the bot's admin **Config Variables** menu. The shortener API credentials and provider list still need to be configured through the private configuration/file settings. Shortener results are accepted only when they are absolute HTTPS URLs.
+
 The gate uses a random, user-bound, expiring, one-time token. Verification state is stored in `Code_dot/database/verification.sqlite3` by default. To put runtime data on a persistent hosting volume, set `CODE_DOT_DATA_DIR` to that volume's directory. Without persistent storage, local verification state may be lost on redeploy.
 
 **Important limitation:** a redirect-only shortener cannot prove that a visitor completed every ad, captcha, or task on the provider's page. This flow verifies that the user returned through the configured short link. Strict completion verification requires a provider-supported signed callback/webhook or API that confirms completion. It does not bypass a provider's access controls.
