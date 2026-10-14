@@ -131,7 +131,7 @@ async def _start_verification_gate(message, user_id):
     if await to_thread(is_start_verified, user_id):
         return False
 
-    if not shortener_dict and not Config.PROTECTED_API:
+    if not Config.shortener_provider_configured() and not shortener_dict:
         LOGGER.error("START_SHORTENER_REQUIRED is enabled but no shortener provider is configured")
         await send_message(
             message,
