@@ -25,4 +25,4 @@ async def webpanel(_, message):
     # URL fragments are not sent in HTTP requests or normal access logs.
     url = f"{base_url}/webpanel#ticket={ticket}"
     keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("🔐 Open Admin Control Center", url=url)]])
-    await send_message(message, "<b>🔐 Leech Dot Bot — Admin Control Center</b>\n\nThis one-time link expires shortly. Keep it private and do not forward it.", reply_markup=keyboard)
+    await send_message(message, "<b>🔐 Leech Dot Bot — Admin Control Center</b>\n\nThis short-lived admin link expires automatically. Keep it private and do not forward it.", reply_markup=keyboard)
