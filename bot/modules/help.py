@@ -58,11 +58,11 @@ async def bot_help(_, message):
             lines.append(clean)
 
     text = (
-        "<b>🚀 CANTARELLABOTS Help</b>\n\n"
+        "<b>🚀 Code_Dots Help</b>\n"
+        "<i>Made by @Code_Dots | Partner: @CodeRips</i>\n\n"
         "<i>⚡ Ultra-fast command reference</i>\n\n"
         + "\n".join(f"• {line}" for line in lines)
         + "\n\n"
         "<blockquote>💡 Run a command without arguments to open its detailed options.</blockquote>"
     )
     await send_message(message, text)
-
