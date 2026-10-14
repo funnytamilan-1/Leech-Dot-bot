@@ -79,6 +79,8 @@ DEFAULT_VALUES = {
     "QUEUE_DOWNLOAD": 0,
     "QUEUE_UPLOAD": 0,
     "USER_MAX_TASKS": 0,
+    "START_SHORTENER_LINK_TTL": 900,
+    "START_SHORTENER_SESSION_TTL": 86400,
 }
 
 BOOL_VARS = [
@@ -118,6 +120,7 @@ BOOL_VARS = [
     "MEM_DEEP_STATS",
     "SEEDR_DELETE_FOLDER",
     "SET_COMMANDS",
+    "START_SHORTENER_REQUIRED",
     "SHOW_CLOUD_LINK",
     "STOP_DUPLICATE",
     "USE_HYPER",
@@ -177,6 +180,9 @@ DEFAULT_DESP = {
     "GOFILE_AUTO_CREATE_FOLDER": "Create folder per upload. Default: False.",
     "PIXELDRAIN_KEY": "PixelDrain API key.",
     "PROTECTED_API": "ProtectedFiles.cc API key.",
+    "START_SHORTENER_REQUIRED": "Require users to complete the configured shortener redirect before using /start. Enable only after a provider is configured.",
+    "START_SHORTENER_LINK_TTL": "Lifetime of a one-time shortener verification link, in seconds (default: 900).",
+    "START_SHORTENER_SESSION_TTL": "How long a user stays verified, in seconds (default: 86400).",
     "BUZZHEAVIER_API": "BuzzHeavier API key.",
     "DEVUPLOADS_KEY": "DevUploads API key.",
     "DEVUPLOADS_FOLDER": "DevUploads folder ID.",
