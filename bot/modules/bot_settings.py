@@ -997,6 +997,13 @@ async def edit_variable(_, message, pre_message, key):
     if not isinstance(value, (str, int, float, bool, list, dict, type(None))):
         value = str(value)
     Config.set(key, value)
+    if key in ("START_SHORTENER_LINK_TTL", "START_SHORTENER_SESSION_TTL"):
+        try:
+            from web.runtime_settings import write_runtime_overrides
+
+            write_runtime_overrides({key: int(value)})
+        except Exception as exc:
+            LOGGER.warning("Could not sync shortener runtime setting %s: %s", key, type(exc).__name__)
     if key == "CMD_SUFFIX":
         BotCommands.refresh_commands()
     shortener_keys = {
@@ -1761,6 +1768,9 @@ async def edit_bot_settings(client, query):
             Config.set(config_key, config_value)
         await database.update_config(updates)
         if Config.START_SHORTENER_REQUIRED and not (Config.shortener_provider_configured() or bool(shortener_dict)):
+            from web.runtime_settings import write_runtime_overrides
+
+            write_runtime_overrides({"START_SHORTENER_REQUIRED": False})
             Config.set("START_SHORTENER_REQUIRED", False)
             await database.update_config({"START_SHORTENER_REQUIRED": False})
         await query.answer("Shortener settings cleared and saved.", show_alert=True)
@@ -1773,7 +1783,18 @@ async def edit_bot_settings(client, query):
                 show_alert=True,
             )
             return
-        await query.answer()
+        try:
+            from web.runtime_settings import write_runtime_overrides
+
+            write_runtime_overrides({"START_SHORTENER_REQUIRED": enabled})
+        except Exception as exc:
+            LOGGER.error("Failed to sync shortener verification setting: %s", type(exc).__name__)
+            await query.answer(
+                "Could not save the shared runtime setting. Check runtime_settings.json permissions.",
+                show_alert=True,
+            )
+            return
+        await query.answer("Verification setting saved.")
         Config.set("START_SHORTENER_REQUIRED", enabled)
         await database.update_config({"START_SHORTENER_REQUIRED": enabled})
         await update_buttons(message, "shortener")
