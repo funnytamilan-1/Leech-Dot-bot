@@ -1,5 +1,13 @@
 from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
-from pyrogram.enums import ButtonStyle
+
+try:
+    from pyrogram.enums import ButtonStyle
+except ImportError:
+    # Older Pyrogram releases do not expose the newer button style enum.
+    class ButtonStyle:
+        PRIMARY = "primary"
+        SUCCESS = "success"
+        DANGER = "danger"
 
 URL_SCHEMES = ("http://", "https://", "tg://")
 
@@ -8,6 +16,18 @@ def _btn_style(style=None):
     if style in (ButtonStyle.DANGER, ButtonStyle.SUCCESS, ButtonStyle.PRIMARY):
         return style
     return ButtonStyle.PRIMARY
+
+
+def _inline_button(**kwargs):
+    """Create a button on both newer styled forks and stock/older Pyrogram."""
+    style = kwargs.pop("style", None)
+    try:
+        return InlineKeyboardButton(**kwargs, style=_btn_style(style))
+    except TypeError as exc:
+        # Stock Pyrogram versions may not accept the newer Bot API style argument.
+        if "style" not in str(exc):
+            raise
+        return InlineKeyboardButton(**kwargs)
 
 
 def valid_url(link):
@@ -40,13 +60,13 @@ class ButtonMaker:
             LOGGER.warning(f"dropping button {key!r} with unusable url {link!r}")
             return
         self.buttons[position if position in self.buttons else "default"].append(
-            InlineKeyboardButton(text=key, url=safe, style=_btn_style(style))
+            _inline_button(text=key, url=safe, style=style)
         )
 
     def web_app_button(self, key, link, position=None, style=None):
         self.buttons[position if position in self.buttons else "default"].append(
-            InlineKeyboardButton(
-                text=key, web_app=WebAppInfo(url=link), style=_btn_style(style)
+            _inline_button(
+                text=key, web_app=WebAppInfo(url=link), style=style
             )
         )
 
@@ -62,7 +82,7 @@ class ButtonMaker:
                 )
                 btn_data = encoded[:64].decode("utf-8", errors="ignore")
         self.buttons[position if position in self.buttons else "default"].append(
-            InlineKeyboardButton(text=str(key), callback_data=btn_data, style=_btn_style(style))
+            _inline_button(text=str(key), callback_data=btn_data, style=style)
         )
 
     def build_menu(self, b_cols=1, h_cols=8, fb_cols=2, lb_cols=2, f_cols=8):
