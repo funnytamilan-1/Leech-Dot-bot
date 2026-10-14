@@ -104,9 +104,13 @@ async def _start_verification_gate(message, user_id):
         token = command_args[1][4:]
         valid = await to_thread(consume_start_token, token, user_id)
         if not valid:
+            LOGGER.warning(
+                "Shortener verification rejected | user_id=%s | reason=invalid_expired_or_wrong_user",
+                user_id,
+            )
             await send_message(
                 message,
-                "<blockquote><b>Verification link is invalid, expired, or belongs to another user.</b>\nPlease request a fresh link with /start.</blockquote>",
+                "<b>⚠️ Verification Failed</b>\n\n<blockquote>This verification link is invalid, expired, already used, or belongs to another Telegram account. Attempts to skip verification will not unlock the bot. Send /start to request a fresh, personal link.</blockquote>\n\n<code>Made by @Code_Dots · Partner @CodeRips</code>",
             )
             return True
         await to_thread(
