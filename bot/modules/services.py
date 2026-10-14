@@ -105,6 +105,25 @@ async def _start_verification_gate(message, user_id):
     if not required or user_id == Config.OWNER_ID:
         return False
 
+    # Verification is optional: never block /start when no provider is usable.
+    # This also repairs stale runtime_settings.json values left by older versions.
+    if not (Config.shortener_provider_configured() or shortener_dict):
+        LOGGER.warning(
+            "Start verification disabled because no shortener provider is configured"
+        )
+        Config.set("START_SHORTENER_REQUIRED", False)
+        try:
+            from web.runtime_settings import write_runtime_overrides
+
+            write_runtime_overrides({"START_SHORTENER_REQUIRED": False})
+        except Exception as exc:
+            LOGGER.warning("Could not clear stale verification override: %s", type(exc).__name__)
+        try:
+            await database.update_config({"START_SHORTENER_REQUIRED": False})
+        except Exception as exc:
+            LOGGER.warning("Could not persist optional verification fallback: %s", type(exc).__name__)
+        return False
+
     command_args = getattr(message, "command", []) or []
     if len(command_args) > 1 and command_args[1].startswith("sdv_"):
         token = command_args[1][4:]
@@ -130,14 +149,6 @@ async def _start_verification_gate(message, user_id):
 
     if await to_thread(is_start_verified, user_id):
         return False
-
-    if not Config.shortener_provider_configured() and not shortener_dict:
-        LOGGER.error("START_SHORTENER_REQUIRED is enabled but no shortener provider is configured")
-        await send_message(
-            message,
-            "<blockquote><b>Start verification is temporarily unavailable.</b>\nThe bot owner must configure a shortener provider.</blockquote>",
-        )
-        return True
 
     bot_info = await TgClient.bot.get_me()
     if not getattr(bot_info, "username", None):
