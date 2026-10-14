@@ -288,8 +288,12 @@ def _webpanel_settings():
         link_ttl = int(value("START_SHORTENER_LINK_TTL", 900) or 900)
         session_ttl = int(value("START_SHORTENER_SESSION_TTL", 86400) or 86400)
         max_tasks = int(value("BOT_MAX_TASKS", 0) or 0)
+        hyper_threads = int(value("HYPER_THREADS", 0) or 0)
+        hyper_pipeline = int(value("HYPER_PIPELINE", 64) or 64)
+        hyper_chunk = int(value("HYPER_CHUNK", 8388608) or 8388608)
     except (ValueError, TypeError):
         owner_id, ticket_ttl, link_ttl, session_ttl, max_tasks = 0, 900, 900, 86400, 0
+        hyper_threads, hyper_pipeline, hyper_chunk = 0, 64, 8388608
     return {
         "secret": str(value("WEBPANEL_SECRET", "") or ""),
         "owner_id": owner_id,
@@ -300,6 +304,10 @@ def _webpanel_settings():
         "session_ttl": max(60, min(session_ttl, 86400)),
         "name_swap": str(value("NAME_SWAP", "") or ""),
         "max_tasks": max_tasks,
+        "use_hyper": str(value("USE_HYPER", True)).lower() in ("true", "1", "yes"),
+        "hyper_threads": max(0, min(hyper_threads, 64)),
+        "hyper_pipeline": max(4, min(hyper_pipeline, 256)),
+        "hyper_chunk": max(65536, min(hyper_chunk, 16777216)),
     }
 
 
@@ -361,6 +369,10 @@ async def webpanel_status(request: Request):
         "session_ttl": overrides.get("START_SHORTENER_SESSION_TTL", settings["session_ttl"]),
         "name_swap_enabled": bool(settings["name_swap"]),
         "max_tasks": settings["max_tasks"],
+        "use_hyper": overrides.get("USE_HYPER", settings["use_hyper"]),
+        "hyper_threads": overrides.get("HYPER_THREADS", settings["hyper_threads"]),
+        "hyper_pipeline": overrides.get("HYPER_PIPELINE", settings["hyper_pipeline"]),
+        "hyper_chunk": overrides.get("HYPER_CHUNK", settings["hyper_chunk"]),
     }, headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"})
 
 
@@ -380,7 +392,7 @@ async def webpanel_update_settings(request: Request):
         body = await request.json()
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid request") from None
-    allowed = {"START_SHORTENER_REQUIRED", "START_SHORTENER_LINK_TTL", "START_SHORTENER_SESSION_TTL"}
+    allowed = {"START_SHORTENER_REQUIRED", "START_SHORTENER_LINK_TTL", "START_SHORTENER_SESSION_TTL", "USE_HYPER", "HYPER_THREADS", "HYPER_PIPELINE", "HYPER_CHUNK"}
     if not isinstance(body, dict) or not body or set(body) - allowed:
         raise HTTPException(status_code=400, detail="Unsupported settings") from None
     from web.runtime_settings import write_runtime_overrides
@@ -396,6 +408,10 @@ async def webpanel_update_settings(request: Request):
             "START_SHORTENER_REQUIRED": saved.get("START_SHORTENER_REQUIRED", settings["shortener_required"]),
             "START_SHORTENER_LINK_TTL": saved.get("START_SHORTENER_LINK_TTL", settings["link_ttl"]),
             "START_SHORTENER_SESSION_TTL": saved.get("START_SHORTENER_SESSION_TTL", settings["session_ttl"]),
+            "USE_HYPER": saved.get("USE_HYPER", settings["use_hyper"]),
+            "HYPER_THREADS": saved.get("HYPER_THREADS", settings["hyper_threads"]),
+            "HYPER_PIPELINE": saved.get("HYPER_PIPELINE", settings["hyper_pipeline"]),
+            "HYPER_CHUNK": saved.get("HYPER_CHUNK", settings["hyper_chunk"]),
         },
         "note": "Runtime overrides are shared through runtime_settings.json on this VPS.",
     }, headers={"Cache-Control": "no-store"})
