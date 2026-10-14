@@ -1767,7 +1767,7 @@ async def edit_bot_settings(client, query):
         for config_key, config_value in updates.items():
             Config.set(config_key, config_value)
         await database.update_config(updates)
-        if Config.START_SHORTENER_REQUIRED and not (Config.shortener_provider_configured() or bool(shortener_dict)):
+        if not (Config.shortener_provider_configured() or bool(shortener_dict)):
             from web.runtime_settings import write_runtime_overrides
 
             write_runtime_overrides({"START_SHORTENER_REQUIRED": False})
