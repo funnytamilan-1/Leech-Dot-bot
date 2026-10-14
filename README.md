@@ -192,3 +192,17 @@ The gate uses a random, user-bound, expiring, one-time token. Verification state
 **𝗠ᴀᴅᴇ ʙʏ [@Code_Dots](https://t.me/Code_Dots) · 𝗣ᴀʀᴛɴᴇʀ [@CodeRips](https://t.me/CodeRips)**
 
 See [NOTICE.md](NOTICE.md) for project credit and license notes. The upstream AGPL-3.0 license text remains unchanged.
+
+
+## Secure VPS Web Control Center
+
+The owner and configured sudo users can send `/webpanel` to receive a short-lived signed admin link. Configure these private environment variables on the same VPS deployment:
+
+- `WEBPANEL_BASE_URL`: public HTTPS origin for the web server, e.g. `https://bot.example.com`.
+- `WEBPANEL_SECRET`: random secret with at least 32 characters. Do not commit it.
+- `WEBPANEL_TICKET_TTL`: signed-link lifetime in seconds (60–1800; default 900).
+- `LEECH_DOT_RUNTIME_SETTINGS`: optional absolute path for the shared runtime settings file. Bot and web workers must use the same file path; default is `runtime_settings.json` in their working directory.
+
+The control center supports runtime shortener verification enable/disable and link/session TTL settings. The private runtime settings file is ignored by Git and is written atomically. Serve the panel only over HTTPS. Never share the admin link or publish the signing secret.
+
+The panel uses the configured `OWNER_ID` and `SUDO_USERS` values for server-side authorization; hiding the dashboard in the browser is not an access-control mechanism.
