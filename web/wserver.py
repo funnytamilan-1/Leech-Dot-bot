@@ -271,6 +271,136 @@ async def re_verify(paused, resumed, hash_id):
     return True
 
 
+
+def _webpanel_settings():
+    cfg = None
+    try:
+        cfg = import_module("config")
+    except ModuleNotFoundError:
+        pass
+
+    def value(name, default=""):
+        return environ.get(name, getattr(cfg, name, default) if cfg else default)
+
+    try:
+        owner_id = int(value("OWNER_ID", 0) or 0)
+        ticket_ttl = int(value("WEBPANEL_TICKET_TTL", 900) or 900)
+        link_ttl = int(value("START_SHORTENER_LINK_TTL", 900) or 900)
+        session_ttl = int(value("START_SHORTENER_SESSION_TTL", 86400) or 86400)
+        max_tasks = int(value("BOT_MAX_TASKS", 0) or 0)
+    except (ValueError, TypeError):
+        owner_id, ticket_ttl, link_ttl, session_ttl, max_tasks = 0, 900, 900, 86400, 0
+    return {
+        "secret": str(value("WEBPANEL_SECRET", "") or ""),
+        "owner_id": owner_id,
+        "sudo_users": value("SUDO_USERS", ""),
+        "ticket_ttl": max(60, min(ticket_ttl, 1800)),
+        "shortener_required": str(value("START_SHORTENER_REQUIRED", False)).lower() in ("true", "1", "yes"),
+        "link_ttl": max(60, min(link_ttl, 86400)),
+        "session_ttl": max(60, min(session_ttl, 86400)),
+        "name_swap": str(value("NAME_SWAP", "") or ""),
+        "max_tasks": max_tasks,
+    }
+
+
+def _webpanel_session(request):
+    from web.panel_auth import parse_admin_ids, verify_ticket
+
+    settings = _webpanel_settings()
+    return verify_ticket(request.cookies.get("webpanel_session", ""), settings["secret"],
+                         parse_admin_ids(settings["owner_id"], settings["sudo_users"]))
+
+
+@app.get("/webpanel", response_class=HTMLResponse)
+async def webpanel_page(request: Request):
+    response = templates.TemplateResponse(request, "control_center.html")
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Referrer-Policy"] = "no-referrer"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    return response
+
+
+@app.post("/api/webpanel/auth")
+async def webpanel_auth(request: Request):
+    from web.panel_auth import parse_admin_ids, verify_ticket
+
+    settings = _webpanel_settings()
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid request") from None
+    ticket = body.get("ticket", "") if isinstance(body, dict) else ""
+    identity = verify_ticket(ticket, settings["secret"],
+                             parse_admin_ids(settings["owner_id"], settings["sudo_users"]))
+    if not identity:
+        raise HTTPException(status_code=401, detail="Invalid or expired admin link")
+    response = JSONResponse({"ok": True, "expires_at": identity["exp"]})
+    response.set_cookie("webpanel_session", ticket,
+                        max_age=max(60, identity["exp"] - int(__import__("time").time())),
+                        httponly=True,
+                        secure=request.url.scheme == "https" or request.headers.get("x-forwarded-proto") == "https",
+                        samesite="strict", path="/")
+    response.headers["Cache-Control"] = "no-store"
+    response.headers["Referrer-Policy"] = "no-referrer"
+    return response
+
+
+@app.get("/api/webpanel/status")
+async def webpanel_status(request: Request):
+    if not _webpanel_session(request):
+        raise HTTPException(status_code=401, detail="Admin authentication required")
+    from bot.helper.ext_utils.runtime_settings import read_runtime_overrides
+
+    settings = _webpanel_settings()
+    overrides = read_runtime_overrides()
+    return JSONResponse({
+        "shortener_required": overrides.get("START_SHORTENER_REQUIRED", settings["shortener_required"]),
+        "link_ttl": overrides.get("START_SHORTENER_LINK_TTL", settings["link_ttl"]),
+        "session_ttl": overrides.get("START_SHORTENER_SESSION_TTL", settings["session_ttl"]),
+        "name_swap_enabled": bool(settings["name_swap"]),
+        "max_tasks": settings["max_tasks"],
+    }, headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"})
+
+
+@app.post("/api/webpanel/settings")
+async def webpanel_update_settings(request: Request):
+    if not _webpanel_session(request):
+        raise HTTPException(status_code=401, detail="Admin authentication required")
+    origin = request.headers.get("origin")
+    host = request.headers.get("host", "")
+    if origin:
+        try:
+            if urlparse(origin).netloc != host:
+                raise HTTPException(status_code=403, detail="Cross-origin request rejected")
+        except ValueError:
+            raise HTTPException(status_code=403, detail="Invalid origin") from None
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid request") from None
+    allowed = {"START_SHORTENER_REQUIRED", "START_SHORTENER_LINK_TTL", "START_SHORTENER_SESSION_TTL"}
+    if not isinstance(body, dict) or not body or set(body) - allowed:
+        raise HTTPException(status_code=400, detail="Unsupported settings") from None
+    from bot.helper.ext_utils.runtime_settings import write_runtime_overrides
+
+    try:
+        saved = write_runtime_overrides(body)
+    except (ValueError, OSError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
+    settings = _webpanel_settings()
+    return JSONResponse({
+        "ok": True,
+        "settings": {
+            "START_SHORTENER_REQUIRED": saved.get("START_SHORTENER_REQUIRED", settings["shortener_required"]),
+            "START_SHORTENER_LINK_TTL": saved.get("START_SHORTENER_LINK_TTL", settings["link_ttl"]),
+            "START_SHORTENER_SESSION_TTL": saved.get("START_SHORTENER_SESSION_TTL", settings["session_ttl"]),
+        },
+        "note": "Runtime overrides are shared through runtime_settings.json on this VPS.",
+    }, headers={"Cache-Control": "no-store"})
+
+
 @app.get("/app/files", response_class=HTMLResponse)
 async def files(request: Request):
     response = templates.TemplateResponse(request, "page.html")
