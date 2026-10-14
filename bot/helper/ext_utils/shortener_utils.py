@@ -7,7 +7,7 @@ Keep provider credentials in private runtime configuration; never log API keys.
 import asyncio
 import base64
 import random
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit
 
 from cloudscraper import create_scraper
 
@@ -37,6 +37,20 @@ def _request(method, url, **kwargs):
         scraper.close()
 
 
+def _validated_short_url(value):
+    """Accept only absolute HTTPS links from shortener providers."""
+    if not isinstance(value, str):
+        return None
+    value = value.strip()
+    try:
+        parsed = urlsplit(value)
+    except ValueError:
+        return None
+    if parsed.scheme != "https" or not parsed.hostname:
+        return None
+    return value
+
+
 def _short_url_sync(longurl):
     """Synchronous provider adapter; called through asyncio.to_thread."""
     disable_warnings()
@@ -44,9 +58,10 @@ def _short_url_sync(longurl):
     if Config.PROTECTED_API:
         response = _request("GET", Config.PROTECTED_API, params={"url": longurl})
         payload = response.json()
-        if payload.get("status") == "success" and payload.get("url"):
-            return payload["url"]
-        raise ValueError("Protected shortener API returned an unsuccessful response")
+        result = _validated_short_url(payload.get("url")) if payload.get("status") == "success" else None
+        if result:
+            return result
+        raise ValueError("Protected shortener API returned an unsuccessful or unsafe URL")
 
     if not shortener_dict:
         return longurl
@@ -91,9 +106,10 @@ def _short_url_sync(longurl):
         )
         result = response.json().get("shortenedUrl")
 
-    if isinstance(result, str) and result.startswith(("https://", "http://")):
+    result = _validated_short_url(result)
+    if result:
         return result
-    raise ValueError(f"Shortener provider '{shortener}' returned no valid URL")
+    raise ValueError(f"Shortener provider '{shortener}' returned no valid HTTPS URL")
 
 
 async def short_url(longurl, attempt=0):
