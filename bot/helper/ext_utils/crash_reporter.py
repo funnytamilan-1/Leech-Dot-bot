@@ -156,7 +156,7 @@ async def _post_report(payload):
         async with AsyncSession() as client:
             r = await client.post(CRASH_REPORT_URL, data=encoded, headers=headers, timeout=15)
         if r.status_code == 200:
-            LOGGER.info("Crash report sent to WZML-X devs")
+            LOGGER.info("Crash report submitted | Made by @Code_Dots | Partner: @CodeRips")
         else:
             LOGGER.warning(f"Crash report failed: HTTP {r.status_code}")
     except Exception as e:
