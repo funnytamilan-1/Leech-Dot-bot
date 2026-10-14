@@ -111,8 +111,12 @@ def _short_url_sync(longurl):
 
     if Config.PROTECTED_API:
         response = _request("GET", Config.PROTECTED_API, params={"url": longurl})
-        payload = response.json()
-        result = _validated_short_url(payload.get("url")) if payload.get("status") == "success" else None
+        payload = _response_json_or_short_url(response, "Protected shortener API")
+        result = (
+            _validated_short_url(payload.get("url"))
+            if isinstance(payload, dict) and payload.get("status") == "success"
+            else None
+        )
         if result:
             return result
         raise ValueError("Protected shortener API returned an unsuccessful or unsafe URL")
@@ -128,7 +132,10 @@ def _short_url_sync(longurl):
             headers={"public-api-token": api_key},
             data={"urlToShorten": longurl},
         )
-        result = response.json().get("shortenedUrl")
+        payload = _response_json_or_short_url(response, "Shorte.st")
+        result = (
+            payload.get("shortenedUrl") if isinstance(payload, dict) else payload
+        )
     elif "linkvertise" in shortener:
         encoded = quote(base64.b64encode(longurl.encode("utf-8")).decode("ascii"), safe="")
         hosts = ("link-to.net", "up-to-down.net", "direct-link.net", "file-link.net")
@@ -141,7 +148,8 @@ def _short_url_sync(longurl):
             json={"long_url": longurl},
             headers={"Authorization": f"Bearer {api_key}"},
         )
-        result = response.json().get("link")
+        payload = _response_json_or_short_url(response, "Bitly")
+        result = payload.get("link") if isinstance(payload, dict) else payload
     elif "ouo.io" in shortener:
         response = _request("GET", f"https://ouo.io/api/{api_key}", params={"s": longurl})
         result = response.text.strip()
@@ -151,14 +159,19 @@ def _short_url_sync(longurl):
             "https://cutt.ly/api/api.php",
             params={"key": api_key, "short": longurl},
         )
-        result = response.json().get("url", {}).get("shortLink")
+        payload = _response_json_or_short_url(response, "Cuttly")
+        url_data = payload.get("url") if isinstance(payload, dict) else None
+        result = url_data.get("shortLink") if isinstance(url_data, dict) else None
     else:
         response = _request(
             "GET",
             f"https://{shortener}/api",
             params={"api": api_key, "url": longurl},
         )
-        result = response.json().get("shortenedUrl")
+        payload = _response_json_or_short_url(response, "Generic shortener API")
+        result = (
+            payload.get("shortenedUrl") if isinstance(payload, dict) else payload
+        )
 
     result = _validated_short_url(result)
     if result:
