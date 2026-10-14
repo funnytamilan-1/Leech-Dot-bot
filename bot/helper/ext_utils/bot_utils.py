@@ -18,12 +18,12 @@ from aiofiles import open as aiopen
 from aiofiles.os import mkdir
 from aiofiles.os import path as aiopath
 from niquests import AsyncSession
-from pyrogram.enums import ButtonStyle, ChatType
+from pyrogram.enums import ChatType
 from pyrogram.handlers import MessageHandler
 
 from ... import LOGGER, bot_loop, user_data
 from ...core.config_manager import Config
-from ..telegram_helper.button_build import ButtonMaker
+from ..telegram_helper.button_build import ButtonMaker, ButtonStyle
 from .db_handler import database
 from .help_messages import (
     CLONE_HELP_DICT,
