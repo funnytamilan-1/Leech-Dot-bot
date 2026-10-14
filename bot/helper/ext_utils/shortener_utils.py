@@ -55,6 +55,41 @@ def _short_url_sync(longurl):
     """Synchronous provider adapter; called through asyncio.to_thread."""
     disable_warnings()
 
+    custom_api_url = (Config.get("SHORTENER_API_URL") or "").strip()
+    custom_api_key = (Config.get("SHORTENER_API_KEY") or "").strip()
+    if custom_api_url:
+        parsed_endpoint = urlsplit(custom_api_url)
+        if parsed_endpoint.scheme != "https" or not parsed_endpoint.hostname:
+            raise ValueError("Custom shortener API endpoint must use HTTPS")
+        if not custom_api_key:
+            raise ValueError("Custom shortener API key is not configured")
+        method = (Config.get("SHORTENER_API_METHOD") or "GET").strip().upper()
+        if method not in ("GET", "POST"):
+            raise ValueError("Custom shortener method must be GET or POST")
+        key_param = (Config.get("SHORTENER_API_KEY_PARAM") or "api").strip()
+        url_param = (Config.get("SHORTENER_URL_PARAM") or "url").strip()
+        response_field = (Config.get("SHORTENER_RESPONSE_FIELD") or "shortenedUrl").strip()
+        if not key_param or not url_param or not response_field:
+            raise ValueError("Custom shortener parameter/response fields cannot be empty")
+        request_data = {key_param: custom_api_key, url_param: longurl}
+        response = _request(
+            method,
+            custom_api_url,
+            params=request_data if method == "GET" else None,
+            json=request_data if method == "POST" else None,
+        )
+        payload = response.json()
+        result = payload
+        for field in response_field.split("."):
+            if not isinstance(result, dict):
+                result = None
+                break
+            result = result.get(field)
+        result = _validated_short_url(result)
+        if result:
+            return result
+        raise ValueError("Custom shortener API returned no valid HTTPS URL")
+
     if Config.PROTECTED_API:
         response = _request("GET", Config.PROTECTED_API, params={"url": longurl})
         payload = response.json()
