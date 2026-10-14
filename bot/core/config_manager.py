@@ -215,6 +215,23 @@ class Config:
     YT_PRIVACY_STATUS = "unlisted"
 
     @classmethod
+    def shortener_provider_configured(cls):
+        """Return whether at least one usable shortener provider is configured."""
+        if cls.PROTECTED_API:
+            return True
+        if cls.SHORTENER_API_URL and cls.SHORTENER_API_KEY:
+            return True
+        try:
+            with open("shortener.txt", encoding="utf-8") as shortener_file:
+                for line in shortener_file:
+                    line = line.strip()
+                    if line and not line.startswith("#") and len(line.split()) == 2:
+                        return True
+        except OSError:
+            pass
+        return False
+
+    @classmethod
     def get(cls, key):
         return getattr(cls, key) if hasattr(cls, key) else None
 
@@ -399,6 +416,10 @@ class Config:
                 value = value.strip()
             if not value:
                 raise ValueError(f"{key} variable is missing!")
+        # Verification must never block bot startup or /start when no provider
+        # is configured. A persisted stale True value is safely normalized OFF.
+        if cls.START_SHORTENER_REQUIRED and not cls.shortener_provider_configured():
+            cls.START_SHORTENER_REQUIRED = False
 
 
 DEFAULT_CONFIG = Config.get_all()
