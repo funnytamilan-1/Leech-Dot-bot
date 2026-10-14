@@ -454,7 +454,7 @@ async def get_buttons(key=None, edit_type=None, edit_mode=False):
         msg = f"<b>🎬 Select FFmpeg Preset Key to Delete:</b>\n\n<blockquote>Available keys: <code>{', '.join(ff_items) or 'None'}</code></blockquote>"
     elif key == "shortener":
         required = bool(Config.START_SHORTENER_REQUIRED)
-        provider_configured = Config.shortener_provider_configured()
+        provider_configured = Config.shortener_provider_configured() or bool(shortener_dict)
         custom_url = Config.get("SHORTENER_API_URL") or ""
         api_key = Config.get("SHORTENER_API_KEY") or ""
         api_method = (Config.get("SHORTENER_API_METHOD") or "GET").upper()
@@ -1718,7 +1718,7 @@ async def edit_bot_settings(client, query):
         await toggle_onoff_var(client, query, message, key, value)
     elif data[1] == "shortener_test":
         try:
-            if not Config.shortener_provider_configured():
+            if not (Config.shortener_provider_configured() or bool(shortener_dict)):
                 await query.answer(
                     "No provider configured. Set a custom API or upload shortener.txt first.",
                     show_alert=True,
@@ -1760,14 +1760,14 @@ async def edit_bot_settings(client, query):
         for config_key, config_value in updates.items():
             Config.set(config_key, config_value)
         await database.update_config(updates)
-        if Config.START_SHORTENER_REQUIRED and not Config.shortener_provider_configured():
+        if Config.START_SHORTENER_REQUIRED and not (Config.shortener_provider_configured() or bool(shortener_dict)):
             Config.set("START_SHORTENER_REQUIRED", False)
             await database.update_config({"START_SHORTENER_REQUIRED": False})
         await query.answer("Shortener settings cleared and saved.", show_alert=True)
         await update_buttons(message, "shortener")
     elif data[1] == "shortener_toggle":
         enabled = len(data) > 2 and data[2] == "on"
-        if enabled and not Config.shortener_provider_configured():
+        if enabled and not (Config.shortener_provider_configured() or bool(shortener_dict)):
             await query.answer(
                 "Shortener is optional. Configure a provider first; verification remains OFF.",
                 show_alert=True,
