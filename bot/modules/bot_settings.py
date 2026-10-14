@@ -389,6 +389,7 @@ async def get_buttons(key=None, edit_type=None, edit_mode=False):
         buttons.data_button("Sabnzbd Settings", "botset nzb")
         buttons.data_button("JDownloader Sync", "botset syncjd")
         buttons.data_button("FFmpeg CMDs", "botset ffmpegcmds")
+        buttons.data_button("Shortener Settings", "botset shortener")
         buttons.data_button("DUMP", "botset dumpcmds")
         buttons.data_button("Close", "botset close", style=ButtonStyle.DANGER)
         msg = "<b>⚙️ Global Bot Settings Dashboard</b>\n\n<blockquote>Select a category to configure global bot settings.</blockquote>"
@@ -444,6 +445,35 @@ async def get_buttons(key=None, edit_type=None, edit_mode=False):
         for k in ff_items:
             buttons.data_button(f"🗑️ Delete '{k}'", f"botset delff do {k}")
         msg = f"<b>🎬 Select FFmpeg Preset Key to Delete:</b>\n\n<blockquote>Available keys: <code>{', '.join(ff_items) or 'None'}</code></blockquote>"
+    elif key == "shortener":
+        required = bool(Config.START_SHORTENER_REQUIRED)
+        buttons.data_button(
+            f"Verification Required: {'ON' if required else 'OFF'}",
+            f"botset shortener_toggle {'off' if required else 'on'}",
+            style=ButtonStyle.SUCCESS if required else ButtonStyle.DANGER,
+        )
+        buttons.data_button(
+            f"Verification Link TTL: {Config.START_SHORTENER_LINK_TTL}s",
+            "botset editvar START_SHORTENER_LINK_TTL edit",
+        )
+        buttons.data_button(
+            f"Verified Session TTL: {Config.START_SHORTENER_SESSION_TTL}s",
+            "botset editvar START_SHORTENER_SESSION_TTL edit",
+        )
+        buttons.data_button(
+            "Protected Shortener API",
+            "botset editvar PROTECTED_API edit",
+        )
+        buttons.data_button("Back", "botset back", position="footer")
+        buttons.data_button("Close", "botset close", position="footer", style=ButtonStyle.DANGER)
+        msg = (
+            "<b>🔗 Shortener Settings</b>\\n\\n"
+            f"<blockquote>• Verification required: <b>{'ON' if required else 'OFF'}</b>\\n"
+            f"• Verification link expires after: <code>{Config.START_SHORTENER_LINK_TTL}</code> seconds\\n"
+            f"• Verified session lasts: <code>{Config.START_SHORTENER_SESSION_TTL}</code> seconds\\n\\n"
+            "Configure a compatible shortener in <code>shortener.txt</code> or set the protected API value. "
+            "Enable verification only after the provider is configured.</blockquote>"
+        )
     elif key == "dumpcmds":
         buttons.data_button("Add/Edit DUMP", "botset editdump edit")
         buttons.data_button("Reset DUMP", "botset resetdump")
@@ -765,6 +795,14 @@ async def edit_variable(_, message, pre_message, key):
     elif key == "TORRENT_TIMEOUT":
         await TorrentManager.change_aria2_option("bt-stop-timeout", value)
         value = int(value)
+    elif key in ("START_SHORTENER_LINK_TTL", "START_SHORTENER_SESSION_TTL"):
+        try:
+            value = int(value)
+            if value < 1:
+                raise ValueError
+        except (TypeError, ValueError):
+            await send_message(message, f"Invalid value! {key} must be a positive number of seconds.")
+            return await update_buttons(pre_message, "shortener")
     elif key == "LEECH_SPLIT_SIZE":
         value = min(int(value), TgClient.MAX_SPLIT_SIZE)
     elif key == "EXCLUDED_EXTENSIONS":
@@ -1432,6 +1470,7 @@ async def edit_bot_settings(client, query):
         "ffmpegcmds",
         "dumpcmds",
         "blocked_ff",
+        "shortener",
     ] or data[
         1
     ].startswith("nzbser"):
@@ -1599,6 +1638,12 @@ async def edit_bot_settings(client, query):
         key = data[2]
         value = data[3]
         await toggle_onoff_var(client, query, message, key, value)
+    elif data[1] == "shortener_toggle":
+        await query.answer()
+        enabled = len(data) > 2 and data[2] == "on"
+        Config.set("START_SHORTENER_REQUIRED", enabled)
+        await database.update_config({"START_SHORTENER_REQUIRED": enabled})
+        await update_buttons(message, "shortener")
     elif data[1] == "blocked_ff":
         await query.answer()
         await update_buttons(message, "blocked_ff")
