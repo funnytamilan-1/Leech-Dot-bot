@@ -257,6 +257,10 @@ class Config:
         # override them before validating required credentials.
         cls.load_config()
         cls.load_env()
+        # A stale persisted flag must not make /start unusable when optional
+        # shortener verification has no configured provider.
+        if cls.START_SHORTENER_REQUIRED and not cls.shortener_provider_configured():
+            cls.START_SHORTENER_REQUIRED = False
         cls._validate_required()
 
     @classmethod
