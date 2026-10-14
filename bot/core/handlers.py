@@ -17,6 +17,13 @@ from .tg_client import TgClient
 async def add_handlers():
     TgClient.bot.add_handler(
         MessageHandler(
+            webpanel,
+            filters=command(BotCommands.WebPanelCommand, case_sensitive=True)
+            & CustomFilters.sudo,
+        )
+    )
+    TgClient.bot.add_handler(
+        MessageHandler(
             authorize,
             filters=command(BotCommands.AuthorizeCommand, case_sensitive=True)
             & CustomFilters.sudo,
