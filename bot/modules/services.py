@@ -301,7 +301,7 @@ async def start_cb(_, query):
         kb = query.message.reply_markup.inline_keyboard[1:]
         kb.insert(
             0,
-            [InlineKeyboardButton("✅ Activated", callback_data="start pass activated", style=ButtonStyle.SUCCESS)],
+            [InlineKeyboardButton("✅ Activated", callback_data="start pass activated")],
         )
         await edit_reply_markup(query.message, InlineKeyboardMarkup(kb))
 
