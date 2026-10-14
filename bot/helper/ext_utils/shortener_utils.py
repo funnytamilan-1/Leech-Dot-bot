@@ -153,7 +153,11 @@ async def short_url(longurl, attempt=0):
     If all configured providers fail, return the original URL so a temporary
     shortener outage does not make unrelated bot commands unresponsive.
     """
-    if not shortener_dict and not Config.PROTECTED_API:
+    if (
+        not shortener_dict
+        and not Config.PROTECTED_API
+        and not (Config.SHORTENER_API_URL and Config.SHORTENER_API_KEY)
+    ):
         return longurl
 
     tries = max(0, _MAX_ATTEMPTS - int(attempt or 0))
