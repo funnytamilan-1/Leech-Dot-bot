@@ -114,18 +114,20 @@ def _service_pwd(service):
 
 
 def _derive_pin(gid):
+    """Derive the compatibility PIN using a secret key, never a source constant alone."""
     from hashlib import sha256
     from hmac import new as hmac_new
 
-    sig = hmac_new(
-        _PIN_SALT,
+    secret = _BOT_TOKEN or _ACCESS_PASSWORD
+    if not secret:
+        return ""
+    digest = hmac_new(
+        secret.encode("utf-8"),
         f"{gid}|{_BOT_ID}".encode("utf-8"),
         sha256,
-    ).hexdigest()
-    digits = "".join(c for c in sig if c.isdigit())[:_PIN_LEN]
-    if len(digits) < _PIN_LEN:
-        digits = (digits + sig).ljust(_PIN_LEN, "0")[:_PIN_LEN]
-    return digits
+    ).digest()
+    # Convert a secret HMAC digest to a fixed-width four-digit PIN.
+    return f"{int.from_bytes(digest[:8], 'big') % (10 ** _PIN_LEN):0{_PIN_LEN}d}"
 
 
 def _pin_rate_limited(gid):
