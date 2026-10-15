@@ -668,7 +668,7 @@
           showStatus('Session deleted. Default merge order will be used.', 'info');
           if (tg) setTimeout(() => tg.close(), 1200);
         } else {
-          showStatus('Error deleting: ' + (res.error || 'Unknown error'), 'error');
+          showStatus('Error deleting: ' + (res.error || res.detail || 'Unknown error'), 'error');
         }
       } catch (e) {
         showStatus('Failed to delete planner.', 'error');
