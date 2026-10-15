@@ -11,7 +11,7 @@ from aiofiles import open as aiopen
 from cloudscraper import create_scraper
 from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
-from .. import LOGGER, auth_chats, user_data, shortener_dict
+from .. import LOGGER, auth_chats, user_data
 from ..core.config_manager import Config
 from ..core.tg_client import TgClient
 from ..helper.ext_utils.bot_utils import new_task, update_user_ldata
@@ -107,7 +107,7 @@ async def _start_verification_gate(message, user_id):
 
     # Verification is optional: never block /start when no provider is usable.
     # This also repairs stale runtime_settings.json values left by older versions.
-    if not (Config.shortener_provider_configured() or shortener_dict):
+    if not Config.shortener_provider_configured():
         LOGGER.warning(
             "Start verification disabled because no shortener provider is configured"
         )
