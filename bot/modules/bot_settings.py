@@ -1484,36 +1484,64 @@ async def update_private_file(_, message, pre_message, key, new_file=False):
 
 
 async def event_handler(client, query, pfunc, rfunc, document=False):
-    chat_id = query.message.chat.id
+    # Callback queries may have no attached message/user for inline or stale
+    # updates. Reject them safely instead of crashing on None.id.
+    query_message = getattr(query, "message", None)
+    query_chat = getattr(query_message, "chat", None)
+    query_user = getattr(query, "from_user", None)
+    if query_message is None or query_chat is None or query_user is None:
+        try:
+            await query.answer("This settings session is no longer available.", show_alert=True)
+        except Exception:
+            pass
+        return
+
+    chat_id = query_chat.id
+    message_id = query_message.id
     handler_dict[chat_id] = True
     start_time = update_time = time()
 
     async def event_filter(_, __, event):
-        user = event.from_user or event.sender_chat
+        # Channel posts/service updates can have neither from_user nor
+        # sender_chat. Ignore those updates instead of dereferencing None.id.
+        user = getattr(event, "from_user", None) or getattr(event, "sender_chat", None)
+        event_chat = getattr(event, "chat", None)
+        has_content = bool(
+            getattr(event, "text", None)
+            or (document and getattr(event, "document", None))
+        )
         return bool(
-            user.id == query.from_user.id
-            and event.chat.id == chat_id
-            and (event.text or event.document and document)
+            user is not None
+            and event_chat is not None
+            and user.id == query_user.id
+            and event_chat.id == chat_id
+            and has_content
         )
 
     handler = client.add_handler(
         MessageHandler(pfunc, filters=create(event_filter)), group=-1
     )
-    while handler_dict[chat_id]:
-        await sleep(0.5)
+    try:
+        while handler_dict.get(chat_id, False):
+            await sleep(0.5)
 
-        if time() - start_time > 60:
-            handler_dict[chat_id] = False
-            await rfunc()
-        elif time() - update_time > 8 and handler_dict[chat_id]:
-            update_time = time()
-            msg = await client.get_messages(chat_id, query.message.id)
-            lines = msg.text.split("\n")
-            lines[-1] = (
-                f"⏱️ <b>Time Left:</b> <code>{round(60 - (time() - start_time), 1)}s</code>"
-            )
-            await edit_message(msg, "\n".join(lines), msg.reply_markup)
-    client.remove_handler(*handler)
+            if time() - start_time > 60:
+                handler_dict[chat_id] = False
+                await rfunc()
+            elif time() - update_time > 8 and handler_dict.get(chat_id, False):
+                update_time = time()
+                msg = await client.get_messages(chat_id, message_id)
+                if msg is None or not getattr(msg, "text", None):
+                    handler_dict[chat_id] = False
+                    await rfunc()
+                    break
+                lines = msg.text.split("\\n")
+                lines[-1] = (
+                    f"⏱️ <b>Time Left:</b> <code>{round(60 - (time() - start_time), 1)}s</code>"
+                )
+                await edit_message(msg, "\\n".join(lines), msg.reply_markup)
+    finally:
+        client.remove_handler(*handler)
 
 
 @new_task
