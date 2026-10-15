@@ -394,7 +394,7 @@ async def get_buttons(key=None, edit_type=None, edit_mode=False):
         buttons.data_button("Sabnzbd Settings", "botset nzb")
         buttons.data_button("JDownloader Sync", "botset syncjd")
         buttons.data_button("FFmpeg CMDs", "botset ffmpegcmds")
-        buttons.data_button("Shortener Settings", "botset shortener")
+        buttons.data_button("Advanced Shortener Settings", "botset shortener")
         buttons.data_button("DUMP", "botset dumpcmds")
         buttons.data_button("Close", "botset close", style=ButtonStyle.DANGER)
         msg = "<b>⚙️ Global Bot Settings Dashboard</b>\n\n<blockquote>Select a category to configure global bot settings.</blockquote>"
@@ -459,12 +459,10 @@ async def get_buttons(key=None, edit_type=None, edit_mode=False):
         api_key_param = Config.get("SHORTENER_API_KEY_PARAM") or "api"
         url_param = Config.get("SHORTENER_URL_PARAM") or "url"
         response_field = Config.get("SHORTENER_RESPONSE_FIELD") or "shortenedUrl"
-        if custom_url and api_key:
-            provider_status = "Custom API configured"
-        elif provider_configured:
+        if provider_configured:
             provider_status = "Advanced API configured"
         else:
-            provider_status = "Not configured — add HTTPS endpoint and API key"
+            provider_status = "Not configured — add a valid HTTPS endpoint and API key"
 
         buttons.data_button(
             f"Verification: {'ON' if required else 'OFF'}",
