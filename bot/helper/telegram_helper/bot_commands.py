@@ -27,6 +27,7 @@ class BotCommands:
         "List": "list",
         "Search": "search",
         "Users": "users",
+        "WebPanel": "webpanel",
         "CancelTask": ["cancel", "c"],
         "CancelRangeLink": ["cancelrl", "cancelrangelink", "cancel_rl", "cancelrange"],
         "CancelAll": ["cancelall", "call"],

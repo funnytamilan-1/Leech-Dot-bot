@@ -1,6 +1,8 @@
-from asyncio import gather
+# Leech Dot Bot customizations by @Code_Dots · partner @CodeRips.
+from asyncio import gather, to_thread
 from html import escape
-from pyrogram.enums import ButtonStyle
+from secrets import token_urlsafe
+
 from time import monotonic, time
 from uuid import uuid4
 from re import match
@@ -9,16 +11,23 @@ from aiofiles import open as aiopen
 from cloudscraper import create_scraper
 from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
-from .. import LOGGER, auth_chats, user_data
+from .. import LOGGER, auth_chats, user_data, shortener_dict
 from ..core.config_manager import Config
 from ..core.tg_client import TgClient
 from ..helper.ext_utils.bot_utils import new_task, update_user_ldata
 from ..helper.ext_utils.links_utils import decode_slink
 from ..helper.ext_utils.status_utils import get_readable_time
 from ..helper.ext_utils.db_handler import database
+from ..helper.ext_utils.shortener_utils import short_url
+from Code_dot.database.verification import (
+    consume_token as consume_start_token,
+    is_verified as is_start_verified,
+    issue_token as issue_start_token,
+    mark_verified as mark_start_verified,
+)
 from ..helper.languages import Language
 from ..helper.telegram_helper.bot_commands import BotCommands
-from ..helper.telegram_helper.button_build import ButtonMaker
+from ..helper.telegram_helper.button_build import ButtonMaker, ButtonStyle
 from ..helper.telegram_helper.filters import CustomFilters
 from ..helper.telegram_helper.tg_utils import chat_info
 from ..helper.telegram_helper.message_utils import (
@@ -34,9 +43,9 @@ async def _build_start_buttons():
     buttons = ButtonMaker()
     lang = Language()
     buttons.url_button(
-        lang.START_BUTTON1, "https://github.com/abhinai2244/CBML", "header"
+        "𝗟ᴇᴇᴄʜ 𝗗ᴏᴛ 𝗦ᴏᴜʀᴄᴇ", "https://github.com/funnytamilan-1/Leech-Dot-bot", "header"
     )
-    buttons.url_button(lang.START_BUTTON2, "https://t.me/cantarellabots", "header")
+    buttons.url_button("𝗖ᴏᴅᴇ 𝗗ᴏᴛs", "https://t.me/Code_Dots", "header")
 
     chat_ids = list(auth_chats.keys())
     if Config.AUTHORIZED_CHATS:
@@ -71,8 +80,8 @@ async def _build_start_buttons():
                 buttons.url_button(title, link, position="default")
 
     buttons.url_button(
-        "TENKA IZUMO",
-        "https://t.me/cantarella_wuwa",
+        "𝗣ᴀʀᴛɴᴇʀ · @CodeRips",
+        "https://t.me/CodeRips",
         position="footer",
         style=ButtonStyle.DANGER,
     )
@@ -80,9 +89,104 @@ async def _build_start_buttons():
     return buttons.build_menu(b_cols=3, h_cols=2, f_cols=1)
 
 
+async def _start_verification_gate(message, user_id):
+    """Gate /start with a user-bound, expiring shortener token when enabled.
+
+    This confirms the user returned through the configured redirect. Providers
+    without server-side callbacks cannot cryptographically prove that every
+    intermediate ad/task was completed.
+    """
+    from web.runtime_settings import read_runtime_overrides
+
+    overrides = read_runtime_overrides()
+    required = overrides.get("START_SHORTENER_REQUIRED", Config.START_SHORTENER_REQUIRED)
+    link_ttl = overrides.get("START_SHORTENER_LINK_TTL", Config.START_SHORTENER_LINK_TTL)
+    session_ttl = overrides.get("START_SHORTENER_SESSION_TTL", Config.START_SHORTENER_SESSION_TTL)
+    if not required or user_id == Config.OWNER_ID:
+        return False
+
+    # Verification is optional: never block /start when no provider is usable.
+    # This also repairs stale runtime_settings.json values left by older versions.
+    if not (Config.shortener_provider_configured() or shortener_dict):
+        LOGGER.warning(
+            "Start verification disabled because no shortener provider is configured"
+        )
+        Config.set("START_SHORTENER_REQUIRED", False)
+        try:
+            from web.runtime_settings import write_runtime_overrides
+
+            write_runtime_overrides({"START_SHORTENER_REQUIRED": False})
+        except Exception as exc:
+            LOGGER.warning("Could not clear stale verification override: %s", type(exc).__name__)
+        try:
+            await database.update_config({"START_SHORTENER_REQUIRED": False})
+        except Exception as exc:
+            LOGGER.warning("Could not persist optional verification fallback: %s", type(exc).__name__)
+        return False
+
+    command_args = getattr(message, "command", []) or []
+    if len(command_args) > 1 and command_args[1].startswith("sdv_"):
+        token = command_args[1][4:]
+        valid = await to_thread(consume_start_token, token, user_id)
+        if not valid:
+            LOGGER.warning(
+                "Shortener verification rejected | user_id=%s | reason=invalid_expired_or_wrong_user",
+                user_id,
+            )
+            await send_message(
+                message,
+                "<b>⚠️ Verification Failed</b>\n\n<blockquote>This verification link is invalid, expired, already used, or belongs to another Telegram account. Attempts to skip verification will not unlock the bot. Send /start to request a fresh, personal link.</blockquote>\n\n<code>Made by @Code_Dots · Partner @CodeRips</code>",
+            )
+            return True
+        await to_thread(
+            mark_start_verified, user_id, session_ttl
+        )
+        await send_message(
+            message,
+            "<blockquote><b>✅ Verification successful.</b>\nSend /start again to open the bot.</blockquote>",
+        )
+        return True
+
+    if await to_thread(is_start_verified, user_id):
+        return False
+
+    bot_info = await TgClient.bot.get_me()
+    if not getattr(bot_info, "username", None):
+        await send_message(message, "<blockquote>Verification is temporarily unavailable. Please try again later.</blockquote>")
+        return True
+
+    token = token_urlsafe(24)
+    await to_thread(
+        issue_start_token, token, user_id, link_ttl
+    )
+    target_url = f"https://t.me/{bot_info.username}?start=sdv_{token}"
+    shortened_url = await short_url(target_url)
+    if shortened_url == target_url:
+        await send_message(
+            message,
+            "<blockquote><b>Could not create a verification link.</b>\nPlease try /start again in a moment.</blockquote>",
+        )
+        return True
+
+    buttons = ButtonMaker()
+    buttons.url_button("🔐 Verify to Start", shortened_url)
+    await send_message(
+        message,
+        "<b>🔐 Start Verification</b>\n\n<blockquote>Open the verification link, complete the configured shortener flow, then return to Telegram. This link is user-bound, expires soon, and can only be used once.</blockquote>",
+        buttons.build_menu(1),
+    )
+    return True
+
+
 @new_task
 async def start(_, message):
-    userid = message.from_user.id
+    sender = getattr(message, "from_user", None)
+    if sender is None:
+        LOGGER.warning("Ignoring /start update without a Telegram user")
+        return
+    userid = sender.id
+    if await _start_verification_gate(message, userid):
+        return
     user_name = message.from_user.first_name if message.from_user else "User"
     reply_markup = await _build_start_buttons()
 
@@ -137,7 +241,7 @@ async def start(_, message):
     if await CustomFilters.authorized(_, message):
         start_string = (
             f"<b>👋 Welcome, {escape(user_name)}!</b>\n\n"
-            f"<blockquote><b>CANTARELLABOTS</b> is ready to mirror and leech files, torrents, and cloud links to Telegram or Cloud Storage.</blockquote>\n\n"
+            f"<blockquote><b>𝗟ᴇᴇᴄʜ 𝗗ᴏᴛ 𝗕ᴏᴛ</b> by @Code_Dots · Partner @CodeRips is ready to mirror and leech files, torrents, and cloud links to Telegram or Cloud Storage.</blockquote>\n\n"
             f"<b>💡 Commands & Help:</b> Use /{help_cmd} to view all available commands and guides.\n"
             f"<b>💬 Authorized Chats:</b> Click any of the authorized chat buttons below to access supported groups."
         )
@@ -156,7 +260,7 @@ async def start(_, message):
         )
     else:
         start_string = (
-            f"<b>👋 Welcome to CANTARELLABOTS, {escape(user_name)}!</b>\n\n"
+            f"<b>👋 Welcome to 𝗟ᴇᴇᴄʜ 𝗗ᴏᴛ 𝗕ᴏᴛ, {escape(user_name)}!</b>\n\n"
             f"<blockquote>Mirror and leech files, torrents, and links to Telegram or Cloud Storage.\n\n"
             f"<b>Note:</b> You are not authorized to use this bot instance directly in private.</blockquote>\n\n"
             f"<b>💬 Authorized Chats:</b> Join our authorized chats below to get access."
@@ -172,8 +276,11 @@ async def start(_, message):
 
 @new_task
 async def start_cb(_, query):
-    user_id = query.from_user.id
-    data = query.data.split()
+    sender = getattr(query, "from_user", None)
+    if sender is None:
+        return
+    user_id = sender.id
+    data = (getattr(query, "data", "") or "").split()
     if len(data) < 3 or data[0] != "start":
         return await query.answer("Invalid request!", show_alert=True)
     input_token = data[2]
@@ -194,13 +301,19 @@ async def start_cb(_, query):
         kb = query.message.reply_markup.inline_keyboard[1:]
         kb.insert(
             0,
-            [InlineKeyboardButton("✅ Activated", callback_data="start pass activated", style=ButtonStyle.SUCCESS)],
+            [InlineKeyboardButton("✅ Activated", callback_data="start pass activated")],
         )
         await edit_reply_markup(query.message, InlineKeyboardMarkup(kb))
 
 
 @new_task
 async def login(_, message):
+    sender = getattr(message, "from_user", None)
+    if sender is None:
+        LOGGER.warning("Ignoring /login update without a Telegram user")
+        return
+    if await _start_verification_gate(message, sender.id):
+        return
     if Config.LOGIN_PASS is None:
         return await send_message(message, "<blockquote>Login password feature is not enabled.</blockquote>")
     elif len(message.command) > 1:
@@ -241,7 +354,11 @@ async def ping(_, message):
 
 @new_task
 async def log(_, message):
-    uid = message.from_user.id
+    sender = getattr(message, "from_user", None)
+    if sender is None:
+        LOGGER.warning("Ignoring /log update without a Telegram user")
+        return
+    uid = sender.id
     buttons = ButtonMaker()
     buttons.data_button("Log Disp", f"log {uid} disp")
     buttons.data_button("Web Log", f"log {uid} web")
@@ -251,9 +368,20 @@ async def log(_, message):
 
 @new_task
 async def log_cb(_, query):
-    data = query.data.split()
-    message = query.message
-    user_id = query.from_user.id
+    sender = getattr(query, "from_user", None)
+    data = (getattr(query, "data", "") or "").split()
+    message = getattr(query, "message", None)
+    if (
+        sender is None
+        or message is None
+        or len(data) < 3
+        or data[0] != "log"
+        or not data[1].isdigit()
+    ):
+        if sender is not None:
+            await query.answer("Invalid request!", show_alert=True)
+        return
+    user_id = sender.id
     if user_id != int(data[1]):
         await query.answer("This menu is not for you!", show_alert=True)
     elif data[2] == "close":

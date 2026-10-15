@@ -79,6 +79,8 @@ DEFAULT_VALUES = {
     "QUEUE_DOWNLOAD": 0,
     "QUEUE_UPLOAD": 0,
     "USER_MAX_TASKS": 0,
+    "START_SHORTENER_LINK_TTL": 900,
+    "START_SHORTENER_SESSION_TTL": 86400,
 }
 
 BOOL_VARS = [
@@ -118,6 +120,7 @@ BOOL_VARS = [
     "MEM_DEEP_STATS",
     "SEEDR_DELETE_FOLDER",
     "SET_COMMANDS",
+    "START_SHORTENER_REQUIRED",
     "SHOW_CLOUD_LINK",
     "STOP_DUPLICATE",
     "USE_HYPER",
@@ -176,7 +179,16 @@ DEFAULT_DESP = {
     "GOFILE_FOLDER_ID": "Gofile.io folder ID.",
     "GOFILE_AUTO_CREATE_FOLDER": "Create folder per upload. Default: False.",
     "PIXELDRAIN_KEY": "PixelDrain API key.",
-    "PROTECTED_API": "ProtectedFiles.cc API key.",
+    "PROTECTED_API": "Legacy protected shortener API endpoint.",
+    "SHORTENER_API_URL": "Your custom shortener API endpoint (HTTPS).",
+    "SHORTENER_API_KEY": "Your custom shortener API key. Hidden in settings display.",
+    "SHORTENER_API_METHOD": "Custom shortener API request method: GET or POST.",
+    "SHORTENER_API_KEY_PARAM": "Parameter name used to send your shortener API key.",
+    "SHORTENER_URL_PARAM": "Parameter name used to send the long URL to shorten.",
+    "SHORTENER_RESPONSE_FIELD": "JSON response field containing the generated short URL (supports dot paths).",
+    "START_SHORTENER_REQUIRED": "Require users to complete the configured shortener redirect before using /start. Enable only after a provider is configured.",
+    "START_SHORTENER_LINK_TTL": "Lifetime of a one-time shortener verification link, in seconds (default: 900).",
+    "START_SHORTENER_SESSION_TTL": "How long a user stays verified, in seconds (default: 86400).",
     "BUZZHEAVIER_API": "BuzzHeavier API key.",
     "DEVUPLOADS_KEY": "DevUploads API key.",
     "DEVUPLOADS_FOLDER": "DevUploads folder ID.",
@@ -307,6 +319,7 @@ PROTECTED_VARS = {
     "OWNER_ID",
     "BOT_TOKEN",
     "DATABASE_URL",
+    "SHORTENER_API_KEY",
 }
 RESTART_VARS = {
     "STREAM_TOKENS",
@@ -383,6 +396,7 @@ async def get_buttons(key=None, edit_type=None, edit_mode=False):
         buttons.data_button("Sabnzbd Settings", "botset nzb")
         buttons.data_button("JDownloader Sync", "botset syncjd")
         buttons.data_button("FFmpeg CMDs", "botset ffmpegcmds")
+        buttons.data_button("Shortener Settings", "botset shortener")
         buttons.data_button("DUMP", "botset dumpcmds")
         buttons.data_button("Close", "botset close", style=ButtonStyle.DANGER)
         msg = "<b>⚙️ Global Bot Settings Dashboard</b>\n\n<blockquote>Select a category to configure global bot settings.</blockquote>"
@@ -438,6 +452,68 @@ async def get_buttons(key=None, edit_type=None, edit_mode=False):
         for k in ff_items:
             buttons.data_button(f"🗑️ Delete '{k}'", f"botset delff do {k}")
         msg = f"<b>🎬 Select FFmpeg Preset Key to Delete:</b>\n\n<blockquote>Available keys: <code>{', '.join(ff_items) or 'None'}</code></blockquote>"
+    elif key == "shortener":
+        required = bool(Config.START_SHORTENER_REQUIRED)
+        provider_configured = Config.shortener_provider_configured() or bool(shortener_dict)
+        custom_url = Config.get("SHORTENER_API_URL") or ""
+        api_key = Config.get("SHORTENER_API_KEY") or ""
+        api_method = (Config.get("SHORTENER_API_METHOD") or "GET").upper()
+        api_key_param = Config.get("SHORTENER_API_KEY_PARAM") or "api"
+        url_param = Config.get("SHORTENER_URL_PARAM") or "url"
+        response_field = Config.get("SHORTENER_RESPONSE_FIELD") or "shortenedUrl"
+        if custom_url and api_key:
+            provider_status = "Custom API configured"
+        elif Config.PROTECTED_API:
+            provider_status = "Legacy Protected API configured"
+        elif shortener_dict:
+            provider_status = f"File providers configured ({len(shortener_dict)})"
+        elif provider_configured:
+            provider_status = "Provider configured"
+        else:
+            provider_status = "Not configured — verification stays optional"
+
+        buttons.data_button(
+            f"Verification: {'ON' if required else 'OFF'}",
+            f"botset shortener_toggle {'off' if required else 'on'}",
+            style=ButtonStyle.SUCCESS if required else ButtonStyle.DANGER,
+        )
+        buttons.data_button("Set API Endpoint", "botset editvar SHORTENER_API_URL edit")
+        buttons.data_button(
+            f"API Key: {'SET (hidden)' if api_key else 'NOT SET'}",
+            "botset editvar SHORTENER_API_KEY edit",
+        )
+        buttons.data_button(f"Method: {api_method}", "botset editvar SHORTENER_API_METHOD edit")
+        buttons.data_button(f"API Key Param: {api_key_param}", "botset editvar SHORTENER_API_KEY_PARAM edit")
+        buttons.data_button(f"Long URL Param: {url_param}", "botset editvar SHORTENER_URL_PARAM edit")
+        buttons.data_button(f"Response JSON Field: {response_field}", "botset editvar SHORTENER_RESPONSE_FIELD edit")
+        buttons.data_button("🧪 Test Provider", "botset shortener_test", style=ButtonStyle.SUCCESS)
+        buttons.data_button("🧹 Clear Custom API", "botset shortener_clear custom")
+        buttons.data_button("Legacy Protected API", "botset editvar PROTECTED_API edit")
+        buttons.data_button("Clear Legacy API", "botset shortener_clear legacy")
+        buttons.data_button(
+            f"Link TTL: {Config.START_SHORTENER_LINK_TTL}s",
+            "botset editvar START_SHORTENER_LINK_TTL edit",
+        )
+        buttons.data_button(
+            f"Session TTL: {Config.START_SHORTENER_SESSION_TTL}s",
+            "botset editvar START_SHORTENER_SESSION_TTL edit",
+        )
+        buttons.data_button("Back", "botset back", position="footer")
+        buttons.data_button("Close", "botset close", position="footer", style=ButtonStyle.DANGER)
+        msg = (
+            "<b>🔗 Shortener Configuration</b>\n\n"
+            f"<blockquote>• <b>Provider:</b> {provider_status}\n"
+            f"• <b>Verification:</b> {'ON' if required else 'OFF'}\n"
+            f"• <b>Link expiry:</b> <code>{Config.START_SHORTENER_LINK_TTL}</code> seconds\n"
+            f"• <b>Verified session:</b> <code>{Config.START_SHORTENER_SESSION_TTL}</code> seconds</blockquote>\n\n"
+            "<b>Setup</b>\n"
+            "1. Set the HTTPS API endpoint and API key.\n"
+            "2. Set the method, parameter names, and response JSON field to match your provider.\n"
+            "3. Tap <b>Test Provider</b>.\n"
+            "4. Turn verification ON only after the test succeeds.\n\n"
+            "<i>Every change is saved to the bot database. The API key is never shown in the menu. "
+            "You can also upload <code>shortener.txt</code> from Private Files. Shortener is optional.</i>"
+        )
     elif key == "dumpcmds":
         buttons.data_button("Add/Edit DUMP", "botset editdump edit")
         buttons.data_button("Reset DUMP", "botset resetdump")
@@ -490,12 +566,15 @@ async def get_buttons(key=None, edit_type=None, edit_mode=False):
             msg = f"<b>⚙️ Variable Configuration: {key}</b>\n\n"
             msg += f"<blockquote>• <b>Description:</b> {DEFAULT_DESP.get(key, 'No description provided')}\n"
             value = Config.get(key)
-            if value == "":
+            if key == "SHORTENER_API_KEY":
+                value = "Configured (hidden)" if value else "Not configured"
+            elif value == "":
                 value = "None"
             msg += f"• <b>Current Value:</b> <code>{value}</code></blockquote>\n\n"
-            buttons.data_button(
-                "View Value", f"botset showvar {key}", position="header"
-            )
+            if key != "SHORTENER_API_KEY":
+                buttons.data_button(
+                    "View Value", f"botset showvar {key}", position="header"
+                )
             buttons.data_button(
                 "Back",
                 f"botset back {'setlimit' if key in LIMIT_VARS else 'var'}",
@@ -759,6 +838,32 @@ async def edit_variable(_, message, pre_message, key):
     elif key == "TORRENT_TIMEOUT":
         await TorrentManager.change_aria2_option("bt-stop-timeout", value)
         value = int(value)
+    elif key == "SHORTENER_API_URL":
+        value = value.strip()
+        if value:
+            from urllib.parse import urlsplit
+            parsed = urlsplit(value)
+            if parsed.scheme != "https" or not parsed.hostname:
+                await send_message(message, "Invalid endpoint! Use a complete HTTPS API URL.")
+                return await update_buttons(pre_message, "shortener")
+    elif key == "SHORTENER_API_METHOD":
+        value = value.strip().upper()
+        if value not in ("GET", "POST"):
+            await send_message(message, "Invalid method! Use GET or POST.")
+            return await update_buttons(pre_message, "shortener")
+    elif key in ("SHORTENER_API_KEY_PARAM", "SHORTENER_URL_PARAM", "SHORTENER_RESPONSE_FIELD"):
+        value = value.strip()
+        if not value:
+            await send_message(message, "This setting cannot be empty.")
+            return await update_buttons(pre_message, "shortener")
+    elif key in ("START_SHORTENER_LINK_TTL", "START_SHORTENER_SESSION_TTL"):
+        try:
+            value = int(value)
+            if value < 1:
+                raise ValueError
+        except (TypeError, ValueError):
+            await send_message(message, f"Invalid value! {key} must be a positive number of seconds.")
+            return await update_buttons(pre_message, "shortener")
     elif key == "LEECH_SPLIT_SIZE":
         value = min(int(value), TgClient.MAX_SPLIT_SIZE)
     elif key == "EXCLUDED_EXTENSIONS":
@@ -892,9 +997,30 @@ async def edit_variable(_, message, pre_message, key):
     if not isinstance(value, (str, int, float, bool, list, dict, type(None))):
         value = str(value)
     Config.set(key, value)
+    if key in ("START_SHORTENER_LINK_TTL", "START_SHORTENER_SESSION_TTL"):
+        try:
+            from web.runtime_settings import write_runtime_overrides
+
+            write_runtime_overrides({key: int(value)})
+        except Exception as exc:
+            LOGGER.warning("Could not sync shortener runtime setting %s: %s", key, type(exc).__name__)
     if key == "CMD_SUFFIX":
         BotCommands.refresh_commands()
-    await update_buttons(pre_message, key, "editvar", False)
+    shortener_keys = {
+        "SHORTENER_API_URL",
+        "SHORTENER_API_KEY",
+        "SHORTENER_API_METHOD",
+        "SHORTENER_API_KEY_PARAM",
+        "SHORTENER_URL_PARAM",
+        "SHORTENER_RESPONSE_FIELD",
+        "PROTECTED_API",
+        "START_SHORTENER_LINK_TTL",
+        "START_SHORTENER_SESSION_TTL",
+    }
+    if key in shortener_keys:
+        await update_buttons(pre_message, "shortener")
+    else:
+        await update_buttons(pre_message, key, "editvar", False)
     await delete_message(message)
     await database.update_config({key: value})
     if key in ["SEARCH_PLUGINS", "SEARCH_API_LINK"]:
@@ -1072,6 +1198,9 @@ async def edit_ff_or_dump(_, message, pre_message, target_var, key):
 
 @new_task
 async def show_var_value(_, query, key):
+    if key == "SHORTENER_API_KEY":
+        await query.answer("API key is hidden for security.", show_alert=True)
+        return
     value = f"{Config.get(key)}"
     if value == "":
         value = "None"
@@ -1355,36 +1484,64 @@ async def update_private_file(_, message, pre_message, key, new_file=False):
 
 
 async def event_handler(client, query, pfunc, rfunc, document=False):
-    chat_id = query.message.chat.id
+    # Callback queries may have no attached message/user for inline or stale
+    # updates. Reject them safely instead of crashing on None.id.
+    query_message = getattr(query, "message", None)
+    query_chat = getattr(query_message, "chat", None)
+    query_user = getattr(query, "from_user", None)
+    if query_message is None or query_chat is None or query_user is None:
+        try:
+            await query.answer("This settings session is no longer available.", show_alert=True)
+        except Exception:
+            pass
+        return
+
+    chat_id = query_chat.id
+    message_id = query_message.id
     handler_dict[chat_id] = True
     start_time = update_time = time()
 
     async def event_filter(_, __, event):
-        user = event.from_user or event.sender_chat
+        # Channel posts/service updates can have neither from_user nor
+        # sender_chat. Ignore those updates instead of dereferencing None.id.
+        user = getattr(event, "from_user", None) or getattr(event, "sender_chat", None)
+        event_chat = getattr(event, "chat", None)
+        has_content = bool(
+            getattr(event, "text", None)
+            or (document and getattr(event, "document", None))
+        )
         return bool(
-            user.id == query.from_user.id
-            and event.chat.id == chat_id
-            and (event.text or event.document and document)
+            user is not None
+            and event_chat is not None
+            and user.id == query_user.id
+            and event_chat.id == chat_id
+            and has_content
         )
 
     handler = client.add_handler(
         MessageHandler(pfunc, filters=create(event_filter)), group=-1
     )
-    while handler_dict[chat_id]:
-        await sleep(0.5)
+    try:
+        while handler_dict.get(chat_id, False):
+            await sleep(0.5)
 
-        if time() - start_time > 60:
-            handler_dict[chat_id] = False
-            await rfunc()
-        elif time() - update_time > 8 and handler_dict[chat_id]:
-            update_time = time()
-            msg = await client.get_messages(chat_id, query.message.id)
-            lines = msg.text.split("\n")
-            lines[-1] = (
-                f"⏱️ <b>Time Left:</b> <code>{round(60 - (time() - start_time), 1)}s</code>"
-            )
-            await edit_message(msg, "\n".join(lines), msg.reply_markup)
-    client.remove_handler(*handler)
+            if time() - start_time > 60:
+                handler_dict[chat_id] = False
+                await rfunc()
+            elif time() - update_time > 8 and handler_dict.get(chat_id, False):
+                update_time = time()
+                msg = await client.get_messages(chat_id, message_id)
+                if msg is None or not getattr(msg, "text", None):
+                    handler_dict[chat_id] = False
+                    await rfunc()
+                    break
+                lines = msg.text.split("\n")
+                lines[-1] = (
+                    f"⏱️ <b>Time Left:</b> <code>{round(60 - (time() - start_time), 1)}s</code>"
+                )
+                await edit_message(msg, "\n".join(lines), msg.reply_markup)
+    finally:
+        client.remove_handler(*handler)
 
 
 @new_task
@@ -1426,6 +1583,7 @@ async def edit_bot_settings(client, query):
         "ffmpegcmds",
         "dumpcmds",
         "blocked_ff",
+        "shortener",
     ] or data[
         1
     ].startswith("nzbser"):
@@ -1593,6 +1751,81 @@ async def edit_bot_settings(client, query):
         key = data[2]
         value = data[3]
         await toggle_onoff_var(client, query, message, key, value)
+    elif data[1] == "shortener_test":
+        try:
+            if not (Config.shortener_provider_configured() or bool(shortener_dict)):
+                await query.answer(
+                    "No provider configured. Set a custom API or upload shortener.txt first.",
+                    show_alert=True,
+                )
+                return
+            import asyncio
+            from ..helper.ext_utils.shortener_utils import _short_url_sync
+
+            test_url = await asyncio.to_thread(_short_url_sync, "https://example.com")
+            if test_url == "https://example.com":
+                await query.answer(
+                    "Provider returned the original URL. Check API endpoint, key, parameters and response JSON field.",
+                    show_alert=True,
+                )
+            else:
+                await query.answer("Shortener test succeeded. A valid shortened URL was returned.", show_alert=True)
+        except Exception as exc:
+            LOGGER.warning("Shortener settings test failed: %s", type(exc).__name__)
+            await query.answer(
+                f"Test failed: {type(exc).__name__}. Check endpoint, key, method, parameters and response field.",
+                show_alert=True,
+            )
+    elif data[1] == "shortener_clear":
+        target = data[2] if len(data) > 2 else ""
+        if target == "custom":
+            updates = {
+                "SHORTENER_API_URL": "",
+                "SHORTENER_API_KEY": "",
+                "SHORTENER_API_METHOD": "GET",
+                "SHORTENER_API_KEY_PARAM": "api",
+                "SHORTENER_URL_PARAM": "url",
+                "SHORTENER_RESPONSE_FIELD": "shortenedUrl",
+            }
+        elif target == "legacy":
+            updates = {"PROTECTED_API": ""}
+        else:
+            await query.answer("Unknown clear action.", show_alert=True)
+            return
+        for config_key, config_value in updates.items():
+            Config.set(config_key, config_value)
+        await database.update_config(updates)
+        if not (Config.shortener_provider_configured() or bool(shortener_dict)):
+            from web.runtime_settings import write_runtime_overrides
+
+            write_runtime_overrides({"START_SHORTENER_REQUIRED": False})
+            Config.set("START_SHORTENER_REQUIRED", False)
+            await database.update_config({"START_SHORTENER_REQUIRED": False})
+        await query.answer("Shortener settings cleared and saved.", show_alert=True)
+        await update_buttons(message, "shortener")
+    elif data[1] == "shortener_toggle":
+        enabled = len(data) > 2 and data[2] == "on"
+        if enabled and not (Config.shortener_provider_configured() or bool(shortener_dict)):
+            await query.answer(
+                "Shortener is optional. Configure a provider first; verification remains OFF.",
+                show_alert=True,
+            )
+            return
+        try:
+            from web.runtime_settings import write_runtime_overrides
+
+            write_runtime_overrides({"START_SHORTENER_REQUIRED": enabled})
+        except Exception as exc:
+            LOGGER.error("Failed to sync shortener verification setting: %s", type(exc).__name__)
+            await query.answer(
+                "Could not save the shared runtime setting. Check runtime_settings.json permissions.",
+                show_alert=True,
+            )
+            return
+        await query.answer("Verification setting saved.")
+        Config.set("START_SHORTENER_REQUIRED", enabled)
+        await database.update_config({"START_SHORTENER_REQUIRED": enabled})
+        await update_buttons(message, "shortener")
     elif data[1] == "blocked_ff":
         await query.answer()
         await update_buttons(message, "blocked_ff")

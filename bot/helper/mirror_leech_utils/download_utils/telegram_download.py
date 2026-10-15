@@ -7,6 +7,7 @@ from aiofiles.os import makedirs
 from pyrogram.errors import FloodWait, PeerIdInvalid, ChannelInvalid
 
 from bot.helper.ext_utils.hyperdl_utils import HypertgDownload
+from web.runtime_settings import read_runtime_overrides
 
 try:
     from pyrogram.errors import FloodPremiumWait
@@ -71,8 +72,9 @@ class TelegramDownloadHelper:
             self._listener.up_dest if self._listener.is_leech else None
         ) or Config.LEECH_LOG_CHAT
         personal_mode = self._listener.user_dict.get("TELEGRAM_SESSION_MODE", "disabled")
+        runtime_settings = read_runtime_overrides()
         self._hyper_dl = (
-            Config.USE_HYPER
+            runtime_settings.get("USE_HYPER", Config.USE_HYPER)
             and personal_mode not in ("telegram", "both")
             and self._dump_chat
             and (

@@ -219,13 +219,9 @@ TgClient.bot.add_handler(
     )
 )
 
-from .helper.ext_utils.bot_utils import derive_service_password
 
-_bot_id = (Config.BOT_TOKEN or "").split(":", 1)[0] or "0"
-qbit_pwd = derive_service_password(_bot_id, "qbit")
-nzb_pwd = derive_service_password(_bot_id, "sabnzbd")
-LOGGER.info(f"Web UI: qBittorrent: /qbit/?pass={qbit_pwd}")
-LOGGER.info(f"Web UI: SABnzbd: /nzb/?pass={nzb_pwd}")
+LOGGER.info("Web UI: qBittorrent: /qbit/ (access token hidden)")
+LOGGER.info("Web UI: SABnzbd: /nzb/ (access token hidden)")
 
 LOGGER.info("WZ Client(s) & Services Started !")
 bot_loop.run_forever()

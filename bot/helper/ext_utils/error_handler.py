@@ -1,3 +1,4 @@
+# Leech Dot Bot reliability helpers · Made by @Code_Dots · Partner: @CodeRips.
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
@@ -48,28 +49,38 @@ class CircuitBreaker:
         self.failure_count = 0
         self.last_failure_time = None
         self.state = CircuitState.CLOSED
+        self.probe_in_flight = False
 
     def can_execute(self) -> bool:
         if self.state == CircuitState.CLOSED:
             return True
         elif self.state == CircuitState.OPEN:
             if (
-                datetime.now() - self.last_failure_time
-            ).total_seconds() >= self.recovery_timeout:
+                self.last_failure_time is not None
+                and (datetime.now() - self.last_failure_time).total_seconds()
+                >= self.recovery_timeout
+            ):
                 self.state = CircuitState.HALF_OPEN
+                self.probe_in_flight = True
                 return True
             return False
-        else:
-            return True
+        # Allow only one probe while recovering, not unlimited concurrent calls.
+        if self.probe_in_flight:
+            return False
+        self.probe_in_flight = True
+        return True
 
     def on_success(self):
         self.failure_count = 0
+        self.probe_in_flight = False
         self.state = CircuitState.CLOSED
 
     def on_failure(self):
+        recovering = self.state == CircuitState.HALF_OPEN
         self.failure_count += 1
         self.last_failure_time = datetime.now()
-        if self.failure_count >= self.failure_threshold:
+        self.probe_in_flight = False
+        if recovering or self.failure_count >= self.failure_threshold:
             self.state = CircuitState.OPEN
 
 
@@ -123,9 +134,19 @@ class ErrorMonitor:
         ) / metrics.total_operations
         metrics.last_updated = datetime.now()
 
-    def get_circuit_breaker(self, operation: str) -> CircuitBreaker:
+    def get_circuit_breaker(
+        self,
+        operation: str,
+        failure_threshold: int = 5,
+        recovery_timeout: int = 60,
+    ) -> CircuitBreaker:
+        # Keep one breaker per operation; creating it inside each call resets
+        # the failure counter and makes the circuit breaker ineffective.
         if operation not in self.circuit_breakers:
-            self.circuit_breakers[operation] = CircuitBreaker()
+            self.circuit_breakers[operation] = CircuitBreaker(
+                failure_threshold=failure_threshold,
+                recovery_timeout=recovery_timeout,
+            )
         return self.circuit_breakers[operation]
 
     def get_error_summary(self, hours: int = 24) -> Dict[str, Any]:
@@ -189,8 +210,10 @@ def error_handler(operation: str = None):
                     severity=ErrorSeverity.HIGH,
                     context={
                         "operation": op_name,
-                        "args": str(args),
-                        "kwargs": str(kwargs),
+                        # Never persist raw argument values: handlers may pass
+                        # API keys, cookies, session strings, or user content.
+                        "args_count": len(args),
+                        "kwargs_names": sorted(str(key) for key in kwargs),
                     },
                 )
                 raise
@@ -206,7 +229,9 @@ def circuit_breaker(
     def decorator(func: Callable) -> Callable:
         @wraps(func)
         async def wrapper(*args, **kwargs):
-            cb = CircuitBreaker(failure_threshold, recovery_timeout)
+            cb = error_monitor.get_circuit_breaker(
+                operation, failure_threshold, recovery_timeout
+            )
             if not cb.can_execute():
                 raise Exception(f"Circuit breaker open for {operation}")
 

@@ -1,3 +1,4 @@
+# Leech Dot Bot configuration · Made by @Code_Dots · Partner @CodeRips.
 # Leech Dot Bot configuration template.
 # Set credentials through private hosting environment variables; never commit secrets.
 # Required Variables
@@ -155,6 +156,13 @@ THUMBNAIL_LAYOUT = ""
 TMDB_ACCESS_TOKEN = ""
 AUTO_THUMBNAIL = False
 VERIFY_TIMEOUT = 0
+# Optional start gate. Enable only after configuring shortener.txt or PROTECTED_API.
+START_SHORTENER_REQUIRED = False
+START_SHORTENER_LINK_TTL = 900
+START_SHORTENER_SESSION_TTL = 86400
+WEBPANEL_BASE_URL = ""
+WEBPANEL_SECRET = ""  # Set a random secret of at least 32 characters via VPS environment variables.
+WEBPANEL_TICKET_TTL = 900
 LOGIN_PASS = ""
 TORRENT_TIMEOUT = 0
 TIMEZONE = "Asia/Kolkata"

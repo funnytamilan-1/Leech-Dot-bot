@@ -1,15 +1,24 @@
+# Leech Dot Bot customizations by @Code_Dots · partner @CodeRips.
 from time import time
+from asyncio import to_thread
 
 from pyrogram.filters import create
 from pyrogram.enums import ChatType
 
 from ... import auth_chats, sudo_users, user_data
 from ...core.config_manager import Config
+from Code_dot.database.verification import is_verified as is_start_verified
 from .tg_utils import chat_info
 
 
 def _source_message(update):
     return getattr(update, "message", None) or update
+
+
+def _user_id(update):
+    """Return a sender ID when this update has a user/chat sender."""
+    user = getattr(update, "from_user", None) or getattr(update, "sender_chat", None)
+    return getattr(user, "id", None)
 
 
 def _chat_context(update):
@@ -25,15 +34,23 @@ def _chat_context(update):
     return chat.id, thread_id
 
 
+async def _start_verified(user_id):
+    if not Config.START_SHORTENER_REQUIRED or user_id == Config.OWNER_ID:
+        return True
+    return await to_thread(is_start_verified, user_id)
+
+
 class CustomFilters:
     async def owner_filter(self, _, update):
-        user = update.from_user or update.sender_chat
-        return user.id == Config.OWNER_ID
+        uid = _user_id(update)
+        return uid is not None and uid == Config.OWNER_ID
 
     owner = create(owner_filter)
 
     async def authorized_user(self, _, update):
-        uid = (update.from_user or update.sender_chat).id
+        uid = _user_id(update)
+        if uid is None or not await _start_verified(uid):
+            return False
         chat_id, thread_id = _chat_context(update)
         return bool(
             uid == Config.OWNER_ID
@@ -66,10 +83,12 @@ class CustomFilters:
     authorized = create(authorized_user)
 
     async def authorized_usetting(self, _, update):
+        uid = _user_id(update)
+        if uid is None or not await _start_verified(uid):
+            return False
         chat = getattr(_source_message(update), "chat", None)
         if chat and chat.type == ChatType.PRIVATE:
             return True
-        uid = (update.from_user or update.sender_chat).id
         is_exists = False
         if await CustomFilters.authorized("", update):
             is_exists = True
@@ -91,8 +110,9 @@ class CustomFilters:
     authorized_uset = create(authorized_usetting)
 
     async def sudo_user(self, _, update):
-        user = update.from_user or update.sender_chat
-        uid = user.id
+        uid = _user_id(update)
+        if uid is None or not await _start_verified(uid):
+            return False
         return bool(
             uid == Config.OWNER_ID
             or uid in user_data
@@ -103,8 +123,8 @@ class CustomFilters:
     sudo = create(sudo_user)
 
     async def blacklisted_user(self, _, update):
-        uid = (update.from_user or update.sender_chat).id
-        if uid not in user_data:
+        uid = _user_id(update)
+        if uid is None or uid not in user_data:
             return False
         bl = user_data[uid].get("BLACKLIST", False)
         if not bl:

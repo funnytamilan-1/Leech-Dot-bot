@@ -1,7 +1,9 @@
+# Configuration regression tests · Made by @Code_Dots · Partner: @CodeRips.
 import importlib.util
 import os
 import unittest
 from pathlib import Path
+from types import ModuleType
 from unittest.mock import patch
 
 # Load the standalone config manager without importing bot/__init__.py, which
@@ -34,6 +36,19 @@ class ConfigEnvironmentTests(unittest.TestCase):
         self.assertEqual(Config.OWNER_ID, 123456)
         self.assertEqual(Config.TELEGRAM_API, 12345)
         self.assertEqual(Config.TELEGRAM_HASH, environment["TELEGRAM_HASH"])
+
+    def test_false_config_values_override_true_class_defaults(self):
+        Config.DISABLE_JD = True
+        Config.DISABLE_NZB = True
+        settings = ModuleType("config_test")
+        settings.DISABLE_JD = False
+        settings.DISABLE_NZB = False
+
+        with patch.object(config_manager, "import_module", return_value=settings):
+            Config.load_config()
+
+        self.assertFalse(Config.DISABLE_JD)
+        self.assertFalse(Config.DISABLE_NZB)
 
     def test_missing_required_credentials_fail_clearly(self):
         with patch.dict(os.environ, {}, clear=True):

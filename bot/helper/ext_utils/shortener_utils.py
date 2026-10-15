@@ -1,86 +1,210 @@
-from base64 import b64encode
-from random import choice, random
-from asyncio import sleep as asleep
-from urllib.parse import quote
+"""Shortener integrations used by Leech Dot Bot.
+
+Made by @Code_Dots · Partner: @CodeRips
+Keep provider credentials in private runtime configuration; never log API keys.
+"""
+
+import asyncio
+import base64
+import random
+from urllib.parse import quote, urlsplit
 
 from cloudscraper import create_scraper
+
 try:
     from urllib3 import disable_warnings
 except ImportError:
     def disable_warnings(*args, **kwargs):
-        pass
+        """Compatibility fallback for older urllib3 installations."""
+
 
 from ... import LOGGER, shortener_dict
 from ...core.config_manager import Config
 
+_REQUEST_TIMEOUT = 20
+_MAX_ATTEMPTS = 4
+
+
+def _request(method, url, **kwargs):
+    """Run one bounded HTTP request and reject HTTP error responses."""
+    kwargs.setdefault("timeout", _REQUEST_TIMEOUT)
+    scraper = create_scraper()
+    try:
+        response = scraper.request(method, url, **kwargs)
+        response.raise_for_status()
+        return response
+    finally:
+        scraper.close()
+
+
+def _validated_short_url(value):
+    """Accept only absolute HTTPS links from shortener providers."""
+    if not isinstance(value, str):
+        return None
+    value = value.strip()
+    try:
+        parsed = urlsplit(value)
+    except ValueError:
+        return None
+    if parsed.scheme != "https" or not parsed.hostname:
+        return None
+    return value
+
+
+def _response_json_or_short_url(response, provider_name):
+    """Parse JSON APIs, while supporting providers that return a plain URL."""
+    try:
+        return response.json()
+    except ValueError as exc:
+        raw = (response.text or "").strip()
+        plain_url = _validated_short_url(raw)
+        if plain_url:
+            return plain_url
+        content_type = (response.headers.get("Content-Type") or "unknown").split(";", 1)[0]
+        raise ValueError(
+            f"{provider_name} returned non-JSON data "
+            f"(HTTP {response.status_code}, content-type={content_type})"
+        ) from exc
+
+
+def _short_url_sync(longurl):
+    """Synchronous provider adapter; called through asyncio.to_thread."""
+    disable_warnings()
+
+    custom_api_url = (Config.get("SHORTENER_API_URL") or "").strip()
+    custom_api_key = (Config.get("SHORTENER_API_KEY") or "").strip()
+    if custom_api_url:
+        parsed_endpoint = urlsplit(custom_api_url)
+        if parsed_endpoint.scheme != "https" or not parsed_endpoint.hostname:
+            raise ValueError("Custom shortener API endpoint must use HTTPS")
+        if not custom_api_key:
+            raise ValueError("Custom shortener API key is not configured")
+        method = (Config.get("SHORTENER_API_METHOD") or "GET").strip().upper()
+        if method not in ("GET", "POST"):
+            raise ValueError("Custom shortener method must be GET or POST")
+        key_param = (Config.get("SHORTENER_API_KEY_PARAM") or "api").strip()
+        url_param = (Config.get("SHORTENER_URL_PARAM") or "url").strip()
+        response_field = (Config.get("SHORTENER_RESPONSE_FIELD") or "shortenedUrl").strip()
+        if not key_param or not url_param or not response_field:
+            raise ValueError("Custom shortener parameter/response fields cannot be empty")
+        request_data = {key_param: custom_api_key, url_param: longurl}
+        response = _request(
+            method,
+            custom_api_url,
+            params=request_data if method == "GET" else None,
+            json=request_data if method == "POST" else None,
+        )
+        payload = _response_json_or_short_url(response, "Custom shortener API")
+        if isinstance(payload, str):
+            result = _validated_short_url(payload)
+        else:
+            result = payload
+            for field in response_field.split("."):
+                if not isinstance(result, dict):
+                    result = None
+                    break
+                result = result.get(field)
+            result = _validated_short_url(result)
+        if result:
+            return result
+        raise ValueError("Custom shortener API returned no valid HTTPS URL")
+
+    if Config.PROTECTED_API:
+        response = _request("GET", Config.PROTECTED_API, params={"url": longurl})
+        payload = _response_json_or_short_url(response, "Protected shortener API")
+        result = (
+            _validated_short_url(payload.get("url"))
+            if isinstance(payload, dict) and payload.get("status") == "success"
+            else None
+        )
+        if result:
+            return result
+        raise ValueError("Protected shortener API returned an unsuccessful or unsafe URL")
+
+    if not shortener_dict:
+        return longurl
+
+    shortener, api_key = random.choice(list(shortener_dict.items()))
+    if "shorte.st" in shortener:
+        response = _request(
+            "PUT",
+            "https://api.shorte.st/v1/data/url",
+            headers={"public-api-token": api_key},
+            data={"urlToShorten": longurl},
+        )
+        payload = _response_json_or_short_url(response, "Shorte.st")
+        result = (
+            payload.get("shortenedUrl") if isinstance(payload, dict) else payload
+        )
+    elif "linkvertise" in shortener:
+        encoded = quote(base64.b64encode(longurl.encode("utf-8")).decode("ascii"), safe="")
+        hosts = ("link-to.net", "up-to-down.net", "direct-link.net", "file-link.net")
+        host = random.choice(hosts)
+        result = f"https://{host}/{api_key}/{random.random() * 1000:.6f}/dynamic?r={encoded}"
+    elif "bitly.com" in shortener:
+        response = _request(
+            "POST",
+            "https://api-ssl.bit.ly/v4/shorten",
+            json={"long_url": longurl},
+            headers={"Authorization": f"Bearer {api_key}"},
+        )
+        payload = _response_json_or_short_url(response, "Bitly")
+        result = payload.get("link") if isinstance(payload, dict) else payload
+    elif "ouo.io" in shortener:
+        response = _request("GET", f"https://ouo.io/api/{api_key}", params={"s": longurl})
+        result = response.text.strip()
+    elif "cutt.ly" in shortener:
+        response = _request(
+            "GET",
+            "https://cutt.ly/api/api.php",
+            params={"key": api_key, "short": longurl},
+        )
+        payload = _response_json_or_short_url(response, "Cuttly")
+        url_data = payload.get("url") if isinstance(payload, dict) else None
+        result = url_data.get("shortLink") if isinstance(url_data, dict) else None
+    else:
+        response = _request(
+            "GET",
+            f"https://{shortener}/api",
+            params={"api": api_key, "url": longurl},
+        )
+        payload = _response_json_or_short_url(response, "Generic shortener API")
+        result = (
+            payload.get("shortenedUrl") if isinstance(payload, dict) else payload
+        )
+
+    result = _validated_short_url(result)
+    if result:
+        return result
+    raise ValueError(f"Shortener provider '{shortener}' returned no valid HTTPS URL")
+
 
 async def short_url(longurl, attempt=0):
-    if not shortener_dict and not Config.PROTECTED_API:
-        return longurl
-    if attempt >= 4:
+    """Shorten a URL without blocking the bot's asyncio event loop.
+
+    If all configured providers fail, return the original URL so a temporary
+    shortener outage does not make unrelated bot commands unresponsive.
+    """
+    if (
+        not shortener_dict
+        and not Config.PROTECTED_API
+        and not (Config.SHORTENER_API_URL and Config.SHORTENER_API_KEY)
+    ):
         return longurl
 
-    cget = create_scraper().request
-    disable_warnings()
-    try:
-        if Config.PROTECTED_API:
-            res = cget("GET", Config.PROTECTED_API, params={"url": longurl}).json()
-            if res.get("status") == "success":
-                return res["url"]
-            raise Exception(f"Protected API Error: {res}")
-
-        _shortener, _shortener_api = choice(list(shortener_dict.items()))
-        if "shorte.st" in _shortener:
-            headers = {"public-api-token": _shortener_api}
-            data = {"urlToShorten": quote(longurl)}
-            return cget(
-                "PUT", "https://api.shorte.st/v1/data/url", headers=headers, data=data
-            ).json()["shortenedUrl"]
-        elif "linkvertise" in _shortener:
-            url = quote(b64encode(longurl.encode("utf-8")))
-            linkvertise = [
-                f"https://link-to.net/{_shortener_api}/{random() * 1000}/dynamic?r={url}",
-                f"https://up-to-down.net/{_shortener_api}/{random() * 1000}/dynamic?r={url}",
-                f"https://direct-link.net/{_shortener_api}/{random() * 1000}/dynamic?r={url}",
-                f"https://file-link.net/{_shortener_api}/{random() * 1000}/dynamic?r={url}",
-            ]
-            return choice(linkvertise)
-        elif "bitly.com" in _shortener:
-            headers = {"Authorization": f"Bearer {_shortener_api}"}
-            return cget(
-                "POST",
-                "https://api-ssl.bit.ly/v4/shorten",
-                json={"long_url": longurl},
-                headers=headers,
-            ).json()["link"]
-        elif "ouo.io" in _shortener:
-            return cget("GET", f"http://ouo.io/api/{_shortener_api}?s={longurl}").text
-        elif "cutt.ly" in _shortener:
-            return cget(
-                "GET",
-                f"http://cutt.ly/api/api.php?key={_shortener_api}&short={longurl}",
-            ).json()["url"]["shortLink"]
-        else:
-            res = cget(
-                "GET",
-                f"https://{_shortener}/api?api={_shortener_api}&url={quote(longurl)}",
-            ).json()
-            shorted = res["shortenedUrl"]
-            if not shorted:
-                shrtco_res = cget(
-                    "GET", f"https://api.shrtco.de/v2/shorten?url={quote(longurl)}"
-                ).json()
-                shrtco_link = shrtco_res["result"]["full_short_link"]
-                res = cget(
-                    "GET",
-                    f"https://{_shortener}/api?api={_shortener_api}&url={shrtco_link}",
-                ).json()
-                shorted = res["shortenedUrl"]
-            if not shorted:
-                shorted = longurl
-            return shorted
-    except Exception as e:
-        LOGGER.error(e)
-        await asleep(0.8)
-        attempt += 1
-        return await short_url(longurl, attempt)
+    tries = max(0, _MAX_ATTEMPTS - int(attempt or 0))
+    for retry in range(tries):
+        try:
+            return await asyncio.to_thread(_short_url_sync, longurl)
+        except Exception as exc:
+            # Do not log request URLs or provider payloads: they can contain
+            # user-specific deep links and credentials.
+            LOGGER.warning(
+                "Shortener request failed (attempt %s/%s): %s",
+                retry + 1,
+                tries,
+                type(exc).__name__,
+            )
+            if retry + 1 < tries:
+                await asyncio.sleep(min(0.5 * (2**retry), 4))
+    return longurl

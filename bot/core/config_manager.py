@@ -1,3 +1,4 @@
+# Leech Dot Bot customizations by @Code_Dots · partner @CodeRips.
 from ast import literal_eval
 from importlib import import_module
 from os import getenv
@@ -63,6 +64,12 @@ class Config:
     GOFILE_AUTO_CREATE_FOLDER = False
     PIXELDRAIN_KEY = ""
     PROTECTED_API = ""
+    SHORTENER_API_URL = ""
+    SHORTENER_API_KEY = ""
+    SHORTENER_API_METHOD = "GET"
+    SHORTENER_API_KEY_PARAM = "api"
+    SHORTENER_URL_PARAM = "url"
+    SHORTENER_RESPONSE_FIELD = "shortenedUrl"
     BUZZHEAVIER_API = ""
     DEVUPLOADS_KEY = ""
     DEVUPLOADS_FOLDER = ""
@@ -178,6 +185,12 @@ class Config:
     TMDB_ACCESS_TOKEN = ""
     AUTO_THUMBNAIL = False
     VERIFY_TIMEOUT = 0
+    START_SHORTENER_REQUIRED = False
+    START_SHORTENER_LINK_TTL = 900
+    START_SHORTENER_SESSION_TTL = 86400
+    WEBPANEL_BASE_URL = ""
+    WEBPANEL_SECRET = ""
+    WEBPANEL_TICKET_TTL = 900
     LOGIN_PASS = ""
     TORRENT_TIMEOUT = 0
     TIMEZONE = "Asia/Kolkata"
@@ -200,6 +213,23 @@ class Config:
     YT_TAGS = ["telegram", "bot", "youtube"]
     YT_CATEGORY_ID = 22
     YT_PRIVACY_STATUS = "unlisted"
+
+    @classmethod
+    def shortener_provider_configured(cls):
+        """Return whether at least one usable shortener provider is configured."""
+        if cls.PROTECTED_API:
+            return True
+        if cls.SHORTENER_API_URL and cls.SHORTENER_API_KEY:
+            return True
+        try:
+            with open("shortener.txt", encoding="utf-8") as shortener_file:
+                for line in shortener_file:
+                    line = line.strip()
+                    if line and not line.startswith("#") and len(line.split()) == 2:
+                        return True
+        except OSError:
+            pass
+        return False
 
     @classmethod
     def get(cls, key):
@@ -227,6 +257,10 @@ class Config:
         # override them before validating required credentials.
         cls.load_config()
         cls.load_env()
+        # A stale persisted flag must not make /start unusable when optional
+        # shortener verification has no configured provider.
+        if cls.START_SHORTENER_REQUIRED and not cls.shortener_provider_configured():
+            cls.START_SHORTENER_REQUIRED = False
         cls._validate_required()
 
     @classmethod
@@ -238,7 +272,10 @@ class Config:
         for attr in dir(settings):
             if hasattr(cls, attr):
                 value = getattr(settings, attr)
-                if not value:
+                # Explicit False/0 values are valid configuration overrides.
+                # Skip only unset values; truthiness would make DISABLE_JD=False
+                # and similar feature toggles impossible to apply from config.py.
+                if value is None or value == "":
                     continue
                 if isinstance(value, str):
                     value = value.strip()
@@ -383,6 +420,10 @@ class Config:
                 value = value.strip()
             if not value:
                 raise ValueError(f"{key} variable is missing!")
+        # Verification must never block bot startup or /start when no provider
+        # is configured. A persisted stale True value is safely normalized OFF.
+        if cls.START_SHORTENER_REQUIRED and not cls.shortener_provider_configured():
+            cls.START_SHORTENER_REQUIRED = False
 
 
 DEFAULT_CONFIG = Config.get_all()

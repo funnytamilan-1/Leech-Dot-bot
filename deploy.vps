@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -e
 
-echo "=== Starting Full VPS Deployment for Mirror-Leech Bot ==="
+echo "=== Starting Full VPS Deployment for Leech Dot Bot ==="
 
 # Check root privileges
 if [ "$EUID" -ne 0 ]; then
@@ -10,7 +10,7 @@ if [ "$EUID" -ne 0 ]; then
 fi
 
 APP_DIR=$(pwd)
-SERVICE_NAME="cantarellabots_bot"
+SERVICE_NAME="leechdot"
 
 echo "[1/6] Updating system and installing system dependencies..."
 export DEBIAN_FRONTEND=noninteractive
@@ -65,15 +65,15 @@ if [ -f "requirements.txt" ]; then
     pip install --no-deps "mega.py>=1.0.8" -q
 fi
 
-echo "[3/6] Preparing CANTARELLABOTS runtime, MegaSDK target, directories and permissions..."
-export CANTARELLABOTS_MEGA_SDK_VERSION="10.20.20"
+echo "[3/6] Preparing Leech Dot Bot runtime, MegaSDK target, directories and permissions..."
+export LEECH_DOT_MEGA_SDK_VERSION="10.20.20"
 mkdir -p downloads thumbnails tokens rclone cookies Images configs/sabnzbd
 chmod +x start.sh setpkgs.sh tunnel.sh cron_boot.py 2>/dev/null || true
 
 echo "[4/6] Configuring systemd service..."
 cat <<EOF > /etc/systemd/system/${SERVICE_NAME}.service
 [Unit]
-Description=CANTARELLABOTS Mirror Leech Bot Service
+Description=LEECH_DOT Mirror Leech Bot Service
 After=network.target
 StartLimitIntervalSec=60
 StartLimitBurst=5

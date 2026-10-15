@@ -46,6 +46,8 @@ basicConfig(
 
 LOGGER = getLogger(__name__)
 
+LOGGER.info("Leech Dot Bot | Made by @Code_Dots | Partner: @CodeRips")
+
 # Do not rewrite installed third-party packages at runtime. The former RSA
 # compatibility patch recursively scanned site-packages on every boot and
 # mutated rsa.py in-place, making startup slower and deployments unpredictable.
