@@ -63,7 +63,6 @@ class Config:
     GOFILE_FOLDER_ID = ""
     GOFILE_AUTO_CREATE_FOLDER = False
     PIXELDRAIN_KEY = ""
-    PROTECTED_API = ""
     SHORTENER_API_URL = ""
     SHORTENER_API_KEY = ""
     SHORTENER_API_METHOD = "GET"
@@ -216,20 +215,18 @@ class Config:
 
     @classmethod
     def shortener_provider_configured(cls):
-        """Return whether at least one usable shortener provider is configured."""
-        if cls.PROTECTED_API:
-            return True
-        if cls.SHORTENER_API_URL and cls.SHORTENER_API_KEY:
-            return True
+        """Return whether the advanced custom API has its endpoint and key."""
+        endpoint = (cls.SHORTENER_API_URL or "").strip()
+        api_key = (cls.SHORTENER_API_KEY or "").strip()
+        if not endpoint or not api_key:
+            return False
+        from urllib.parse import urlsplit
+
         try:
-            with open("shortener.txt", encoding="utf-8") as shortener_file:
-                for line in shortener_file:
-                    line = line.strip()
-                    if line and not line.startswith("#") and len(line.split()) == 2:
-                        return True
-        except OSError:
-            pass
-        return False
+            parsed = urlsplit(endpoint)
+            return parsed.scheme == "https" and bool(parsed.hostname)
+        except ValueError:
+            return False
 
     @classmethod
     def get(cls, key):

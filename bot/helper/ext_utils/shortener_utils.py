@@ -5,9 +5,7 @@ Keep provider credentials in private runtime configuration; never log API keys.
 """
 
 import asyncio
-import base64
-import random
-from urllib.parse import quote, urlsplit
+from urllib.parse import urlsplit
 
 from cloudscraper import create_scraper
 
@@ -18,7 +16,7 @@ except ImportError:
         """Compatibility fallback for older urllib3 installations."""
 
 
-from ... import LOGGER, shortener_dict
+from ... import LOGGER
 from ...core.config_manager import Config
 
 _REQUEST_TIMEOUT = 20
@@ -109,87 +107,15 @@ def _short_url_sync(longurl):
             return result
         raise ValueError("Custom shortener API returned no valid HTTPS URL")
 
-    if Config.PROTECTED_API:
-        response = _request("GET", Config.PROTECTED_API, params={"url": longurl})
-        payload = _response_json_or_short_url(response, "Protected shortener API")
-        result = (
-            _validated_short_url(payload.get("url"))
-            if isinstance(payload, dict) and payload.get("status") == "success"
-            else None
-        )
-        if result:
-            return result
-        raise ValueError("Protected shortener API returned an unsuccessful or unsafe URL")
-
-    if not shortener_dict:
-        return longurl
-
-    shortener, api_key = random.choice(list(shortener_dict.items()))
-    if "shorte.st" in shortener:
-        response = _request(
-            "PUT",
-            "https://api.shorte.st/v1/data/url",
-            headers={"public-api-token": api_key},
-            data={"urlToShorten": longurl},
-        )
-        payload = _response_json_or_short_url(response, "Shorte.st")
-        result = (
-            payload.get("shortenedUrl") if isinstance(payload, dict) else payload
-        )
-    elif "linkvertise" in shortener:
-        encoded = quote(base64.b64encode(longurl.encode("utf-8")).decode("ascii"), safe="")
-        hosts = ("link-to.net", "up-to-down.net", "direct-link.net", "file-link.net")
-        host = random.choice(hosts)
-        result = f"https://{host}/{api_key}/{random.random() * 1000:.6f}/dynamic?r={encoded}"
-    elif "bitly.com" in shortener:
-        response = _request(
-            "POST",
-            "https://api-ssl.bit.ly/v4/shorten",
-            json={"long_url": longurl},
-            headers={"Authorization": f"Bearer {api_key}"},
-        )
-        payload = _response_json_or_short_url(response, "Bitly")
-        result = payload.get("link") if isinstance(payload, dict) else payload
-    elif "ouo.io" in shortener:
-        response = _request("GET", f"https://ouo.io/api/{api_key}", params={"s": longurl})
-        result = response.text.strip()
-    elif "cutt.ly" in shortener:
-        response = _request(
-            "GET",
-            "https://cutt.ly/api/api.php",
-            params={"key": api_key, "short": longurl},
-        )
-        payload = _response_json_or_short_url(response, "Cuttly")
-        url_data = payload.get("url") if isinstance(payload, dict) else None
-        result = url_data.get("shortLink") if isinstance(url_data, dict) else None
-    else:
-        response = _request(
-            "GET",
-            f"https://{shortener}/api",
-            params={"api": api_key, "url": longurl},
-        )
-        payload = _response_json_or_short_url(response, "Generic shortener API")
-        result = (
-            payload.get("shortenedUrl") if isinstance(payload, dict) else payload
-        )
-
-    result = _validated_short_url(result)
-    if result:
-        return result
-    raise ValueError(f"Shortener provider '{shortener}' returned no valid HTTPS URL")
-
+    raise ValueError("No custom shortener API is configured")
 
 async def short_url(longurl, attempt=0):
     """Shorten a URL without blocking the bot's asyncio event loop.
 
-    If all configured providers fail, return the original URL so a temporary
-    shortener outage does not make unrelated bot commands unresponsive.
+    If the advanced API is not configured, return the original URL. When
+    verification is enabled, the caller detects this and does not unlock access.
     """
-    if (
-        not shortener_dict
-        and not Config.PROTECTED_API
-        and not (Config.SHORTENER_API_URL and Config.SHORTENER_API_KEY)
-    ):
+    if not Config.shortener_provider_configured():
         return longurl
 
     tries = max(0, _MAX_ATTEMPTS - int(attempt or 0))
