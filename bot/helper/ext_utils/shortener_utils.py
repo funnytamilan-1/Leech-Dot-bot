@@ -112,14 +112,10 @@ def _short_url_sync(longurl):
 async def short_url(longurl, attempt=0):
     """Shorten a URL without blocking the bot's asyncio event loop.
 
-    If all configured providers fail, return the original URL so a temporary
-    shortener outage does not make unrelated bot commands unresponsive.
+    If the advanced API is not configured, return the original URL. When
+    verification is enabled, the caller detects this and does not unlock access.
     """
-    if (
-        not shortener_dict
-        and not Config.PROTECTED_API
-        and not (Config.SHORTENER_API_URL and Config.SHORTENER_API_KEY)
-    ):
+    if not Config.shortener_provider_configured():
         return longurl
 
     tries = max(0, _MAX_ATTEMPTS - int(attempt or 0))
