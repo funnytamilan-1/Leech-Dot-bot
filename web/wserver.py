@@ -114,18 +114,20 @@ def _service_pwd(service):
 
 
 def _derive_pin(gid):
+    """Derive the compatibility PIN using a secret key, never a source constant alone."""
     from hashlib import sha256
     from hmac import new as hmac_new
 
-    sig = hmac_new(
-        _PIN_SALT,
+    secret = _BOT_TOKEN or _ACCESS_PASSWORD
+    if not secret:
+        return ""
+    digest = hmac_new(
+        secret.encode("utf-8"),
         f"{gid}|{_BOT_ID}".encode("utf-8"),
         sha256,
-    ).hexdigest()
-    digits = "".join(c for c in sig if c.isdigit())[:_PIN_LEN]
-    if len(digits) < _PIN_LEN:
-        digits = (digits + sig).ljust(_PIN_LEN, "0")[:_PIN_LEN]
-    return digits
+    ).digest()
+    # Convert a secret HMAC digest to a fixed-width four-digit PIN.
+    return f"{int.from_bytes(digest[:8], 'big') % (10 ** _PIN_LEN):0{_PIN_LEN}d}"
 
 
 def _pin_rate_limited(gid):
@@ -156,7 +158,7 @@ def _record_pin_attempt(gid):
 
 def _verify_pin(gid, pin):
     from hashlib import sha256
-    from hmac import new as hmac_new
+    from hmac import compare_digest, new as hmac_new
 
     if not gid or not pin:
         return False
@@ -165,10 +167,9 @@ def _verify_pin(gid, pin):
     expected = _derive_pin(gid)
     if not expected:
         return False
-    return (
-        hmac_new(_PIN_SALT, expected.encode(), sha256).hexdigest()
-        == hmac_new(_PIN_SALT, pin.encode(), sha256).hexdigest()
-    )
+    expected_digest = hmac_new(_PIN_SALT, expected.encode(), sha256).digest()
+    supplied_digest = hmac_new(_PIN_SALT, pin.encode(), sha256).digest()
+    return compare_digest(expected_digest, supplied_digest)
 
 
 aria2 = None
@@ -438,38 +439,73 @@ async def mini_planner(request: Request):
     return response
 
 
+def _verify_telegram_webapp_init_data(init_data: str, expected_user_id: str) -> bool:
+    """Verify Telegram Mini App initData and bind it to the requested Telegram user."""
+    import hashlib
+    import hmac
+    import json
+    from time import time
+    from urllib.parse import parse_qsl
+
+    if not isinstance(init_data, str) or not init_data or len(init_data) > 8192:
+        return False
+    if not _BOT_TOKEN:
+        LOGGER.error("Planner API disabled: BOT_TOKEN is not configured")
+        return False
+    try:
+        pairs = parse_qsl(init_data, keep_blank_values=True, strict_parsing=True)
+        values = {}
+        for key, value in pairs:
+            if key in values:
+                return False
+            values[key] = value
+        supplied_hash = values.pop("hash", "")
+        if not supplied_hash or len(supplied_hash) != 64:
+            return False
+        auth_date = int(values.get("auth_date", "0"))
+        now = int(time())
+        if auth_date > now + 30 or now - auth_date > 3600:
+            return False
+        data_check_string = "\n".join(f"{key}={value}" for key, value in sorted(values.items()))
+        secret_key = hmac.new(b"WebAppData", _BOT_TOKEN.encode("utf-8"), hashlib.sha256).digest()
+        expected_hash = hmac.new(secret_key, data_check_string.encode("utf-8"), hashlib.sha256).hexdigest()
+        if not hmac.compare_digest(supplied_hash, expected_hash):
+            return False
+        user = json.loads(values.get("user", "{}"))
+        if not isinstance(user, dict):
+            return False
+        return str(user.get("id", "")) == str(expected_user_id)
+    except (ValueError, TypeError, json.JSONDecodeError):
+        return False
+
+
+def _require_planner_user(request: Request, user_id: str):
+    if not isinstance(user_id, str) or not user_id.isdigit() or len(user_id) > 20:
+        raise HTTPException(status_code=400, detail="Invalid planner user")
+    init_data = request.headers.get("x-telegram-init-data", "")
+    if not _verify_telegram_webapp_init_data(init_data, user_id):
+        raise HTTPException(status_code=401, detail="Valid Telegram Mini App authentication required")
+
+
 def _find_planner_data(mid: str, user_id: str):
+    """Resolve only the exact session key; never fall back to another user's session."""
+    if not isinstance(mid, str) or not mid.isdigit() or len(mid) > 20:
+        return f"{mid}_{user_id}", None
+    if not isinstance(user_id, str) or not user_id.isdigit() or len(user_id) > 20:
+        return f"{mid}_{user_id}", None
     key = f"{mid}_{user_id}"
     from bot import planner_tasks
     data = planner_tasks.get(key) or planner_store.get(key)
-    if data:
-        return key, data
-
-    all_sessions = list(planner_tasks.items()) + list(planner_store.items())
-
-    if mid and user_id:
-        for k, v in all_sessions:
-            if str(v.get("mid")) == str(mid) and str(v.get("user_id")) == str(user_id):
-                return k, v
-
-    if user_id:
-        for k, v in all_sessions:
-            if str(v.get("user_id")) == str(user_id):
-                return k, v
-
-    if mid:
-        for k, v in all_sessions:
-            if str(v.get("mid")) == str(mid):
-                return k, v
-
-    if len(all_sessions) == 1:
-        return all_sessions[0][0], all_sessions[0][1]
-
-    return key, None
+    if not isinstance(data, dict):
+        return key, None
+    if str(data.get("mid", "")) != mid or str(data.get("user_id", "")) != user_id:
+        return key, None
+    return key, data
 
 
 @app.get("/api/planner/data")
-async def get_planner_data(mid: str, user_id: str):
+async def get_planner_data(request: Request, mid: str, user_id: str):
+    _require_planner_user(request, user_id)
     _, data = _find_planner_data(mid, user_id)
     if not data:
         return JSONResponse({"error": "Planner session not found or expired"}, status_code=404)
@@ -482,24 +518,55 @@ async def get_planner_data(mid: str, user_id: str):
         "created_at": data.get("created_at", 0),
         "timeout_seconds": data.get("timeout_seconds", 600),
     }
-    return JSONResponse(resp_data)
+    return JSONResponse(
+        resp_data,
+        headers={"Cache-Control": "no-store", "Pragma": "no-cache"},
+    )
 
 
 @app.post("/api/planner/save")
 async def save_planner_data(request: Request):
-    body = await request.json()
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON request") from None
+    if not isinstance(body, dict):
+        raise HTTPException(status_code=400, detail="Invalid request body")
     mid = body.get("mid")
     user_id = body.get("user_id")
     files = body.get("files", [])
     output_filename = body.get("output_filename", "")
+    _require_planner_user(request, user_id)
 
     key, data = _find_planner_data(mid, user_id)
     if not data:
         return JSONResponse({"error": "Planner session not found or expired"}, status_code=404)
 
+    if not isinstance(files, list) or not files or len(files) > 500:
+        raise HTTPException(status_code=400, detail="Files must be a non-empty list of at most 500 entries")
+    if any(not isinstance(name, str) or not name or len(name) > 1024 or any(ord(ch) < 32 for ch in name) for name in files):
+        raise HTTPException(status_code=400, detail="Invalid file entry")
+    original_files = data.get("files", [])
+    if not isinstance(original_files, list) or len(original_files) > 500:
+        raise HTTPException(status_code=400, detail="Invalid planner session file list")
+    allowed_counts = {}
+    for name in original_files:
+        if isinstance(name, str):
+            allowed_counts[name] = allowed_counts.get(name, 0) + 1
+    submitted_counts = {}
+    for name in files:
+        submitted_counts[name] = submitted_counts.get(name, 0) + 1
+        if submitted_counts[name] > allowed_counts.get(name, 0):
+            raise HTTPException(status_code=400, detail="Submitted files do not match this planner session")
+    if (not isinstance(output_filename, str) or not output_filename.strip()
+            or len(output_filename) > 255 or output_filename in {".", ".."}
+            or "/" in output_filename or "\\" in output_filename
+            or any(ord(ch) < 32 for ch in output_filename)):
+        raise HTTPException(status_code=400, detail="Invalid output filename")
+
     from bot import planner_tasks
     data["files"] = files
-    data["output_filename"] = output_filename
+    data["output_filename"] = output_filename.strip()
     data["saved"] = True
     planner_store[key] = data
     planner_tasks[key] = data
@@ -519,11 +586,19 @@ async def save_planner_data(request: Request):
 
 @app.post("/api/planner/delete")
 async def delete_planner_data(request: Request):
-    body = await request.json()
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON request") from None
+    if not isinstance(body, dict):
+        raise HTTPException(status_code=400, detail="Invalid request body")
     mid = body.get("mid")
     user_id = body.get("user_id")
+    _require_planner_user(request, user_id)
 
     key, data = _find_planner_data(mid, user_id)
+    if not data:
+        return JSONResponse({"error": "Planner session not found or expired"}, status_code=404)
     from bot import planner_tasks
     planner_store.pop(key, None)
     data_task = planner_tasks.pop(key, None)

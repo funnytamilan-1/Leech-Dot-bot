@@ -417,6 +417,7 @@
 
   <script>
     const tg = window.Telegram?.WebApp;
+    const telegramInitData = tg?.initData || '';
     if (tg) {
       tg.expand();
       tg.ready();
@@ -448,11 +449,13 @@
       }
 
       try {
-        const resp = await fetch(`/api/planner/data?mid=${encodeURIComponent(mid)}&user_id=${encodeURIComponent(user_id)}`);
+        const resp = await fetch(`/api/planner/data?mid=${encodeURIComponent(mid)}&user_id=${encodeURIComponent(user_id)}`, {
+          headers: { 'X-Telegram-Init-Data': telegramInitData }
+        });
         if (!resp.ok) {
           const errData = await resp.json().catch(() => ({}));
           document.getElementById('loading').style.display = 'none';
-          showStatus(errData.error || 'Planner session expired or not found.', 'error');
+          showStatus(errData.error || errData.detail || 'Planner session expired or not found.', 'error');
           return;
         }
 
@@ -536,17 +539,39 @@
         const li = document.createElement('li');
         li.className = 'file-item';
 
-        li.innerHTML = `
-          <div class="file-info">
-            <div class="serial">${globalIdx + 1}</div>
-            <div class="filename" title="${file}">${file}</div>
-          </div>
-          <div class="controls">
-            <button class="btn-ctrl" ${globalIdx === 0 ? 'disabled' : ''} onclick="moveItem(${globalIdx}, -1)" title="Move Up">▲</button>
-            <button class="btn-ctrl" ${globalIdx === totalFiles - 1 ? 'disabled' : ''} onclick="moveItem(${globalIdx}, 1)" title="Move Down">▼</button>
-            <button class="btn-ctrl" style="background: rgba(239, 68, 68, 0.2); color: #fca5a5; border-color: rgba(239, 68, 68, 0.3);" onclick="removeSingleFile(${globalIdx})" title="Remove File">❌</button>
-          </div>
-        `;
+        const info = document.createElement('div');
+        info.className = 'file-info';
+        const serial = document.createElement('div');
+        serial.className = 'serial';
+        serial.textContent = String(globalIdx + 1);
+        const filename = document.createElement('div');
+        filename.className = 'filename';
+        filename.textContent = String(file);
+        filename.title = String(file);
+        info.append(serial, filename);
+
+        const controls = document.createElement('div');
+        controls.className = 'controls';
+        const upButton = document.createElement('button');
+        upButton.className = 'btn-ctrl';
+        upButton.textContent = '▲';
+        upButton.title = 'Move Up';
+        upButton.disabled = globalIdx === 0;
+        upButton.addEventListener('click', () => moveItem(globalIdx, -1));
+        const downButton = document.createElement('button');
+        downButton.className = 'btn-ctrl';
+        downButton.textContent = '▼';
+        downButton.title = 'Move Down';
+        downButton.disabled = globalIdx === totalFiles - 1;
+        downButton.addEventListener('click', () => moveItem(globalIdx, 1));
+        const removeButton = document.createElement('button');
+        removeButton.className = 'btn-ctrl';
+        removeButton.textContent = '❌';
+        removeButton.title = 'Remove File';
+        removeButton.style.cssText = 'background: rgba(239, 68, 68, 0.2); color: #fca5a5; border-color: rgba(239, 68, 68, 0.3);';
+        removeButton.addEventListener('click', () => removeSingleFile(globalIdx));
+        controls.append(upButton, downButton, removeButton);
+        li.append(info, controls);
         listEl.appendChild(li);
       });
     }
@@ -608,7 +633,7 @@
         showStatus('Saving configuration...', 'info');
         const resp = await fetch('/api/planner/save', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', 'X-Telegram-Init-Data': telegramInitData },
           body: JSON.stringify({
             mid: mid,
             user_id: user_id,
@@ -621,7 +646,7 @@
           showStatus('✅ Configuration saved successfully! You may close this window.', 'success');
           if (tg) setTimeout(() => tg.close(), 1200);
         } else {
-          showStatus('Error saving: ' + (res.error || 'Unknown error'), 'error');
+          showStatus('Error saving: ' + (res.error || res.detail || 'Unknown error'), 'error');
         }
       } catch (e) {
         showStatus('Failed to save planner.', 'error');
@@ -635,7 +660,7 @@
         showStatus('Deleting session...', 'info');
         const resp = await fetch('/api/planner/delete', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', 'X-Telegram-Init-Data': telegramInitData },
           body: JSON.stringify({ mid: mid, user_id: user_id })
         });
         const res = await resp.json();
@@ -643,7 +668,7 @@
           showStatus('Session deleted. Default merge order will be used.', 'info');
           if (tg) setTimeout(() => tg.close(), 1200);
         } else {
-          showStatus('Error deleting: ' + (res.error || 'Unknown error'), 'error');
+          showStatus('Error deleting: ' + (res.error || res.detail || 'Unknown error'), 'error');
         }
       } catch (e) {
         showStatus('Failed to delete planner.', 'error');
