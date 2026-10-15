@@ -158,7 +158,7 @@ def _record_pin_attempt(gid):
 
 def _verify_pin(gid, pin):
     from hashlib import sha256
-    from hmac import new as hmac_new
+    from hmac import compare_digest, new as hmac_new
 
     if not gid or not pin:
         return False
@@ -167,10 +167,9 @@ def _verify_pin(gid, pin):
     expected = _derive_pin(gid)
     if not expected:
         return False
-    return (
-        hmac_new(_PIN_SALT, expected.encode(), sha256).hexdigest()
-        == hmac_new(_PIN_SALT, pin.encode(), sha256).hexdigest()
-    )
+    expected_digest = hmac_new(_PIN_SALT, expected.encode(), sha256).digest()
+    supplied_digest = hmac_new(_PIN_SALT, pin.encode(), sha256).digest()
+    return compare_digest(expected_digest, supplied_digest)
 
 
 aria2 = None
@@ -473,6 +472,8 @@ def _verify_telegram_webapp_init_data(init_data: str, expected_user_id: str) -> 
         if not hmac.compare_digest(supplied_hash, expected_hash):
             return False
         user = json.loads(values.get("user", "{}"))
+        if not isinstance(user, dict):
+            return False
         return str(user.get("id", "")) == str(expected_user_id)
     except (ValueError, TypeError, json.JSONDecodeError):
         return False
