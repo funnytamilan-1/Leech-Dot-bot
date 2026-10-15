@@ -660,7 +660,7 @@
         showStatus('Deleting session...', 'info');
         const resp = await fetch('/api/planner/delete', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', 'X-Telegram-Init-Data': telegramInitData },
           body: JSON.stringify({ mid: mid, user_id: user_id })
         });
         const res = await resp.json();
