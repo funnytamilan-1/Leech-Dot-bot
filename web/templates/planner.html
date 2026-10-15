@@ -455,7 +455,7 @@
         if (!resp.ok) {
           const errData = await resp.json().catch(() => ({}));
           document.getElementById('loading').style.display = 'none';
-          showStatus(errData.error || 'Planner session expired or not found.', 'error');
+          showStatus(errData.error || errData.detail || 'Planner session expired or not found.', 'error');
           return;
         }
 
@@ -646,7 +646,7 @@
           showStatus('✅ Configuration saved successfully! You may close this window.', 'success');
           if (tg) setTimeout(() => tg.close(), 1200);
         } else {
-          showStatus('Error saving: ' + (res.error || 'Unknown error'), 'error');
+          showStatus('Error saving: ' + (res.error || res.detail || 'Unknown error'), 'error');
         }
       } catch (e) {
         showStatus('Failed to save planner.', 'error');
