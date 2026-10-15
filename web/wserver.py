@@ -518,7 +518,10 @@ async def get_planner_data(request: Request, mid: str, user_id: str):
         "created_at": data.get("created_at", 0),
         "timeout_seconds": data.get("timeout_seconds", 600),
     }
-    return JSONResponse(resp_data)
+    return JSONResponse(
+        resp_data,
+        headers={"Cache-Control": "no-store", "Pragma": "no-cache"},
+    )
 
 
 @app.post("/api/planner/save")
