@@ -1535,11 +1535,11 @@ async def event_handler(client, query, pfunc, rfunc, document=False):
                     handler_dict[chat_id] = False
                     await rfunc()
                     break
-                lines = msg.text.split("\\n")
+                lines = msg.text.split("\n")
                 lines[-1] = (
                     f"⏱️ <b>Time Left:</b> <code>{round(60 - (time() - start_time), 1)}s</code>"
                 )
-                await edit_message(msg, "\\n".join(lines), msg.reply_markup)
+                await edit_message(msg, "\n".join(lines), msg.reply_markup)
     finally:
         client.remove_handler(*handler)
 
