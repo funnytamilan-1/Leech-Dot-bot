@@ -32,7 +32,6 @@ from .. import (
     sabnzbd_client,
     scheduler,
     task_dict,
-    shortener_dict,
     excluded_extensions,
     auth_chats,
     sudo_users,
@@ -179,7 +178,6 @@ DEFAULT_DESP = {
     "GOFILE_FOLDER_ID": "Gofile.io folder ID.",
     "GOFILE_AUTO_CREATE_FOLDER": "Create folder per upload. Default: False.",
     "PIXELDRAIN_KEY": "PixelDrain API key.",
-    "PROTECTED_API": "Legacy protected shortener API endpoint.",
     "SHORTENER_API_URL": "Your custom shortener API endpoint (HTTPS).",
     "SHORTENER_API_KEY": "Your custom shortener API key. Hidden in settings display.",
     "SHORTENER_API_METHOD": "Custom shortener API request method: GET or POST.",
@@ -454,7 +452,7 @@ async def get_buttons(key=None, edit_type=None, edit_mode=False):
         msg = f"<b>🎬 Select FFmpeg Preset Key to Delete:</b>\n\n<blockquote>Available keys: <code>{', '.join(ff_items) or 'None'}</code></blockquote>"
     elif key == "shortener":
         required = bool(Config.START_SHORTENER_REQUIRED)
-        provider_configured = Config.shortener_provider_configured() or bool(shortener_dict)
+        provider_configured = Config.shortener_provider_configured()
         custom_url = Config.get("SHORTENER_API_URL") or ""
         api_key = Config.get("SHORTENER_API_KEY") or ""
         api_method = (Config.get("SHORTENER_API_METHOD") or "GET").upper()
@@ -463,14 +461,10 @@ async def get_buttons(key=None, edit_type=None, edit_mode=False):
         response_field = Config.get("SHORTENER_RESPONSE_FIELD") or "shortenedUrl"
         if custom_url and api_key:
             provider_status = "Custom API configured"
-        elif Config.PROTECTED_API:
-            provider_status = "Legacy Protected API configured"
-        elif shortener_dict:
-            provider_status = f"File providers configured ({len(shortener_dict)})"
         elif provider_configured:
-            provider_status = "Provider configured"
+            provider_status = "Advanced API configured"
         else:
-            provider_status = "Not configured — verification stays optional"
+            provider_status = "Not configured — add HTTPS endpoint and API key"
 
         buttons.data_button(
             f"Verification: {'ON' if required else 'OFF'}",
@@ -488,8 +482,6 @@ async def get_buttons(key=None, edit_type=None, edit_mode=False):
         buttons.data_button(f"Response JSON Field: {response_field}", "botset editvar SHORTENER_RESPONSE_FIELD edit")
         buttons.data_button("🧪 Test Provider", "botset shortener_test", style=ButtonStyle.SUCCESS)
         buttons.data_button("🧹 Clear Custom API", "botset shortener_clear custom")
-        buttons.data_button("Legacy Protected API", "botset editvar PROTECTED_API edit")
-        buttons.data_button("Clear Legacy API", "botset shortener_clear legacy")
         buttons.data_button(
             f"Link TTL: {Config.START_SHORTENER_LINK_TTL}s",
             "botset editvar START_SHORTENER_LINK_TTL edit",
@@ -512,7 +504,7 @@ async def get_buttons(key=None, edit_type=None, edit_mode=False):
             "3. Tap <b>Test Provider</b>.\n"
             "4. Turn verification ON only after the test succeeds.\n\n"
             "<i>Every change is saved to the bot database. The API key is never shown in the menu. "
-            "You can also upload <code>shortener.txt</code> from Private Files. Shortener is optional.</i>"
+            "Configure an HTTPS API endpoint and key below. Shortener is optional until enabled.</i>"
         )
     elif key == "dumpcmds":
         buttons.data_button("Add/Edit DUMP", "botset editdump edit")
@@ -706,7 +698,6 @@ async def get_buttons(key=None, edit_type=None, edit_mode=False):
                     "rclone.conf",
                     "accounts.zip",
                     "list_drives.txt",
-                    "shortener.txt",
                     "categories.txt",
                     "cookies.txt",
                     "terabox.txt",
@@ -1013,7 +1004,6 @@ async def edit_variable(_, message, pre_message, key):
         "SHORTENER_API_KEY_PARAM",
         "SHORTENER_URL_PARAM",
         "SHORTENER_RESPONSE_FIELD",
-        "PROTECTED_API",
         "START_SHORTENER_LINK_TTL",
         "START_SHORTENER_SESSION_TTL",
     }
@@ -1455,13 +1445,6 @@ async def update_private_file(_, message, pre_message, key, new_file=False):
                     index_urls.append(temp[2])
                 else:
                     index_urls.append("")
-    elif file_name == "shortener.txt" and await aiopath.exists("shortener.txt"):
-        async with aiopen("shortener.txt", "r+") as f:
-            lines = await f.readlines()
-            for line in lines:
-                temp = line.strip().split()
-                if len(temp) == 2:
-                    shortener_dict[temp[0]] = temp[1]
     elif file_name == "categories.txt" and await aiopath.exists("categories.txt"):
         categories_dict.clear()
         if Config.GDRIVE_ID:
@@ -1753,9 +1736,9 @@ async def edit_bot_settings(client, query):
         await toggle_onoff_var(client, query, message, key, value)
     elif data[1] == "shortener_test":
         try:
-            if not (Config.shortener_provider_configured() or bool(shortener_dict)):
+            if not (Config.shortener_provider_configured()):
                 await query.answer(
-                    "No provider configured. Set a custom API or upload shortener.txt first.",
+                    "No advanced API configured. Set an HTTPS endpoint and API key first.",
                     show_alert=True,
                 )
                 return
@@ -1787,15 +1770,13 @@ async def edit_bot_settings(client, query):
                 "SHORTENER_URL_PARAM": "url",
                 "SHORTENER_RESPONSE_FIELD": "shortenedUrl",
             }
-        elif target == "legacy":
-            updates = {"PROTECTED_API": ""}
         else:
             await query.answer("Unknown clear action.", show_alert=True)
             return
         for config_key, config_value in updates.items():
             Config.set(config_key, config_value)
         await database.update_config(updates)
-        if not (Config.shortener_provider_configured() or bool(shortener_dict)):
+        if not (Config.shortener_provider_configured()):
             from web.runtime_settings import write_runtime_overrides
 
             write_runtime_overrides({"START_SHORTENER_REQUIRED": False})
@@ -1805,7 +1786,7 @@ async def edit_bot_settings(client, query):
         await update_buttons(message, "shortener")
     elif data[1] == "shortener_toggle":
         enabled = len(data) > 2 and data[2] == "on"
-        if enabled and not (Config.shortener_provider_configured() or bool(shortener_dict)):
+        if enabled and not (Config.shortener_provider_configured()):
             await query.answer(
                 "Shortener is optional. Configure a provider first; verification remains OFF.",
                 show_alert=True,
