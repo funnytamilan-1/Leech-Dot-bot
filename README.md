@@ -206,3 +206,11 @@ The owner and configured sudo users can send `/webpanel` to receive a short-live
 The control center supports runtime shortener verification enable/disable and link/session TTL settings. The private runtime settings file is ignored by Git and is written atomically. Serve the panel only over HTTPS. Never share the admin link or publish the signing secret.
 
 The panel uses the configured `OWNER_ID` and `SUDO_USERS` values for server-side authorization; hiding the dashboard in the browser is not an access-control mechanism.
+
+## Shortener verification security
+
+Keep the optional start gate disabled until a supported provider is configured with a **server-to-server completion callback**. A redirect back to Telegram is not proof that a provider task or CAPTCHA was completed. The gate fails closed when enabled but the shortener API is missing.
+
+For providers that support a signed callback, configure a public HTTPS base URL and set `SHORTENER_CALLBACK_SECRET` as a private environment variable (at least 32 random characters). The callback endpoint is `GET /api/shortener/complete`; the provider integration must call it only after confirmed completion and provide `token`, `user_id`, `timestamp`, and `signature`. The signature is HMAC-SHA256 over the UTF-8 string `{user_id}:{token}:{timestamp}`, using `SHORTENER_CALLBACK_SECRET`; send the resulting hex digest as `signature`. Timestamps older than five minutes are rejected. Providers unable to provide trusted server-side proof are **not compatible with real completion verification**; do not treat a normal redirect as a substitute.
+
+CAPTCHA challenges must be completed by the user on the provider site. This bot does not solve or bypass CAPTCHA. Keep the verification SQLite database in persistent storage so restarts/redeployments do not erase verified-user records. Do not publish callback secrets or provider API keys.
