@@ -5,17 +5,12 @@ from pathlib import Path
 from tempfile import NamedTemporaryFile
 
 _ALLOWED = {
-    "START_SHORTENER_REQUIRED": bool,
-    "START_SHORTENER_LINK_TTL": int,
-    "START_SHORTENER_SESSION_TTL": int,
     "USE_HYPER": bool,
     "HYPER_THREADS": int,
     "HYPER_PIPELINE": int,
     "HYPER_CHUNK": int,
 }
 _LIMITS = {
-    "START_SHORTENER_LINK_TTL": (60, 86400),
-    "START_SHORTENER_SESSION_TTL": (60, 86400),
     "HYPER_THREADS": (0, 64),
     "HYPER_PIPELINE": (4, 256),
     "HYPER_CHUNK": (65536, 16777216),
