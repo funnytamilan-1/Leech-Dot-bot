@@ -1,13 +1,11 @@
 # Leech Dot Bot customizations by @Code_Dots · partner @CodeRips.
 from time import time
-from asyncio import to_thread
 
 from pyrogram.filters import create
 from pyrogram.enums import ChatType
 
 from ... import auth_chats, sudo_users, user_data
 from ...core.config_manager import Config
-from Code_dot.database.verification import is_verified as is_start_verified
 from .tg_utils import chat_info
 
 
@@ -34,23 +32,6 @@ def _chat_context(update):
     return chat.id, thread_id
 
 
-async def _start_verified(user_id):
-    """Apply the same verification setting to every command using these filters."""
-    if user_id == Config.OWNER_ID:
-        return True
-    from web.runtime_settings import read_runtime_overrides
-
-    required = read_runtime_overrides().get(
-        "START_SHORTENER_REQUIRED", Config.START_SHORTENER_REQUIRED
-    )
-    if not required:
-        return True
-    # Fail closed if the gate is enabled but its provider is not configured.
-    if not Config.shortener_provider_configured():
-        return False
-    return await to_thread(is_start_verified, user_id)
-
-
 class CustomFilters:
     async def owner_filter(self, _, update):
         uid = _user_id(update)
@@ -60,7 +41,7 @@ class CustomFilters:
 
     async def authorized_user(self, _, update):
         uid = _user_id(update)
-        if uid is None or not await _start_verified(uid):
+        if uid is None:
             return False
         chat_id, thread_id = _chat_context(update)
         return bool(
@@ -95,7 +76,7 @@ class CustomFilters:
 
     async def authorized_usetting(self, _, update):
         uid = _user_id(update)
-        if uid is None or not await _start_verified(uid):
+        if uid is None:
             return False
         chat = getattr(_source_message(update), "chat", None)
         if chat and chat.type == ChatType.PRIVATE:
@@ -122,7 +103,7 @@ class CustomFilters:
 
     async def sudo_user(self, _, update):
         uid = _user_id(update)
-        if uid is None or not await _start_verified(uid):
+        if uid is None:
             return False
         return bool(
             uid == Config.OWNER_ID
