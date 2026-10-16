@@ -30,7 +30,6 @@ from fastapi.responses import (
     JSONResponse,
     Response,
     StreamingResponse,
-    RedirectResponse,
 )
 from fastapi.templating import Jinja2Templates
 from sabnzbdapi import SabnzbdClient
@@ -802,7 +801,7 @@ def rewrite_location(location: str, proxy_prefix: str) -> str:
         return proxy_prefix + location
     if parsed.hostname in ["localhost", "127.0.0.1"]:
         return proxy_prefix + parsed.path
-    return location
+    return ""
 
 
 async def proxy_fetch(
@@ -817,6 +816,17 @@ async def proxy_fetch(
         data=body,
         allow_redirects=False,
     ) as upstream:
+        if upstream.status in (301, 302, 303, 307, 308):
+            loc = upstream.headers.get("Location")
+            if loc:
+                new_loc = rewrite_location(loc, proxy_prefix)
+                if not new_loc:
+                    LOGGER.warning("Blocked external redirect from proxied service")
+                    return Response(
+                        content="External redirects are disabled.",
+                        status_code=502,
+                        media_type="text/plain",
+                    )
         raw = [
             (k.lower().encode("latin-1"), v.encode("latin-1"))
             for k, v in upstream.headers.items()
