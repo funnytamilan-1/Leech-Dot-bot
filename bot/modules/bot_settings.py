@@ -78,8 +78,6 @@ DEFAULT_VALUES = {
     "QUEUE_DOWNLOAD": 0,
     "QUEUE_UPLOAD": 0,
     "USER_MAX_TASKS": 0,
-    "START_SHORTENER_LINK_TTL": 900,
-    "START_SHORTENER_SESSION_TTL": 86400,
 }
 
 BOOL_VARS = [
@@ -119,7 +117,6 @@ BOOL_VARS = [
     "MEM_DEEP_STATS",
     "SEEDR_DELETE_FOLDER",
     "SET_COMMANDS",
-    "START_SHORTENER_REQUIRED",
     "SHOW_CLOUD_LINK",
     "STOP_DUPLICATE",
     "USE_HYPER",
@@ -184,9 +181,6 @@ DEFAULT_DESP = {
     "SHORTENER_API_KEY_PARAM": "Parameter name used to send your shortener API key.",
     "SHORTENER_URL_PARAM": "Parameter name used to send the long URL to shorten.",
     "SHORTENER_RESPONSE_FIELD": "JSON response field containing the generated short URL (supports dot paths).",
-    "START_SHORTENER_REQUIRED": "Require users to complete the configured shortener redirect before using /start. Enable only after a provider is configured.",
-    "START_SHORTENER_LINK_TTL": "Lifetime of a one-time shortener verification link, in seconds (default: 900).",
-    "START_SHORTENER_SESSION_TTL": "How long a user stays verified, in seconds (default: 86400).",
     "BUZZHEAVIER_API": "BuzzHeavier API key.",
     "DEVUPLOADS_KEY": "DevUploads API key.",
     "DEVUPLOADS_FOLDER": "DevUploads folder ID.",
@@ -451,7 +445,6 @@ async def get_buttons(key=None, edit_type=None, edit_mode=False):
             buttons.data_button(f"🗑️ Delete '{k}'", f"botset delff do {k}")
         msg = f"<b>🎬 Select FFmpeg Preset Key to Delete:</b>\n\n<blockquote>Available keys: <code>{', '.join(ff_items) or 'None'}</code></blockquote>"
     elif key == "shortener":
-        required = bool(Config.START_SHORTENER_REQUIRED)
         provider_configured = Config.shortener_provider_configured()
         custom_url = Config.get("SHORTENER_API_URL") or ""
         api_key = Config.get("SHORTENER_API_KEY") or ""
@@ -464,11 +457,6 @@ async def get_buttons(key=None, edit_type=None, edit_mode=False):
         else:
             provider_status = "Not configured — add a valid HTTPS endpoint and API key"
 
-        buttons.data_button(
-            f"Verification: {'ON' if required else 'OFF'}",
-            f"botset shortener_toggle {'off' if required else 'on'}",
-            style=ButtonStyle.SUCCESS if required else ButtonStyle.DANGER,
-        )
         buttons.data_button("Set API Endpoint", "botset editvar SHORTENER_API_URL edit")
         buttons.data_button(
             f"API Key: {'SET (hidden)' if api_key else 'NOT SET'}",
@@ -480,29 +468,18 @@ async def get_buttons(key=None, edit_type=None, edit_mode=False):
         buttons.data_button(f"Response JSON Field: {response_field}", "botset editvar SHORTENER_RESPONSE_FIELD edit")
         buttons.data_button("🧪 Test Provider", "botset shortener_test", style=ButtonStyle.SUCCESS)
         buttons.data_button("🧹 Clear Custom API", "botset shortener_clear custom")
-        buttons.data_button(
-            f"Link TTL: {Config.START_SHORTENER_LINK_TTL}s",
-            "botset editvar START_SHORTENER_LINK_TTL edit",
-        )
-        buttons.data_button(
-            f"Session TTL: {Config.START_SHORTENER_SESSION_TTL}s",
-            "botset editvar START_SHORTENER_SESSION_TTL edit",
-        )
         buttons.data_button("Back", "botset back", position="footer")
         buttons.data_button("Close", "botset close", position="footer", style=ButtonStyle.DANGER)
         msg = (
             "<b>🔗 Shortener Configuration</b>\n\n"
             f"<blockquote>• <b>Provider:</b> {provider_status}\n"
-            f"• <b>Verification:</b> {'ON' if required else 'OFF'}\n"
-            f"• <b>Link expiry:</b> <code>{Config.START_SHORTENER_LINK_TTL}</code> seconds\n"
-            f"• <b>Verified session:</b> <code>{Config.START_SHORTENER_SESSION_TTL}</code> seconds</blockquote>\n\n"
             "<b>Setup</b>\n"
             "1. Set the HTTPS API endpoint and API key.\n"
             "2. Set the method, parameter names, and response JSON field to match your provider.\n"
             "3. Tap <b>Test Provider</b>.\n"
             "4. Turn verification ON only after the test succeeds.\n\n"
             "<i>Every change is saved to the bot database. The API key is never shown in the menu. "
-            "Configure an HTTPS API endpoint and key below. Shortener is optional until enabled.</i>"
+            "Configure an HTTPS API endpoint and key below. Shortener is optional.</i>"
         )
     elif key == "dumpcmds":
         buttons.data_button("Add/Edit DUMP", "botset editdump edit")
@@ -845,14 +822,6 @@ async def edit_variable(_, message, pre_message, key):
         if not value:
             await send_message(message, "This setting cannot be empty.")
             return await update_buttons(pre_message, "shortener")
-    elif key in ("START_SHORTENER_LINK_TTL", "START_SHORTENER_SESSION_TTL"):
-        try:
-            value = int(value)
-            if value < 1:
-                raise ValueError
-        except (TypeError, ValueError):
-            await send_message(message, f"Invalid value! {key} must be a positive number of seconds.")
-            return await update_buttons(pre_message, "shortener")
     elif key == "LEECH_SPLIT_SIZE":
         value = min(int(value), TgClient.MAX_SPLIT_SIZE)
     elif key == "EXCLUDED_EXTENSIONS":
@@ -986,13 +955,6 @@ async def edit_variable(_, message, pre_message, key):
     if not isinstance(value, (str, int, float, bool, list, dict, type(None))):
         value = str(value)
     Config.set(key, value)
-    if key in ("START_SHORTENER_LINK_TTL", "START_SHORTENER_SESSION_TTL"):
-        try:
-            from web.runtime_settings import write_runtime_overrides
-
-            write_runtime_overrides({key: int(value)})
-        except Exception as exc:
-            LOGGER.warning("Could not sync shortener runtime setting %s: %s", key, type(exc).__name__)
     if key == "CMD_SUFFIX":
         BotCommands.refresh_commands()
     shortener_keys = {
@@ -1002,8 +964,6 @@ async def edit_variable(_, message, pre_message, key):
         "SHORTENER_API_KEY_PARAM",
         "SHORTENER_URL_PARAM",
         "SHORTENER_RESPONSE_FIELD",
-        "START_SHORTENER_LINK_TTL",
-        "START_SHORTENER_SESSION_TTL",
     }
     if key in shortener_keys:
         await update_buttons(pre_message, "shortener")
@@ -1774,36 +1734,7 @@ async def edit_bot_settings(client, query):
         for config_key, config_value in updates.items():
             Config.set(config_key, config_value)
         await database.update_config(updates)
-        if not (Config.shortener_provider_configured()):
-            from web.runtime_settings import write_runtime_overrides
-
-            write_runtime_overrides({"START_SHORTENER_REQUIRED": False})
-            Config.set("START_SHORTENER_REQUIRED", False)
-            await database.update_config({"START_SHORTENER_REQUIRED": False})
         await query.answer("Shortener settings cleared and saved.", show_alert=True)
-        await update_buttons(message, "shortener")
-    elif data[1] == "shortener_toggle":
-        enabled = len(data) > 2 and data[2] == "on"
-        if enabled and not (Config.shortener_provider_configured()):
-            await query.answer(
-                "Shortener is optional. Configure a provider first; verification remains OFF.",
-                show_alert=True,
-            )
-            return
-        try:
-            from web.runtime_settings import write_runtime_overrides
-
-            write_runtime_overrides({"START_SHORTENER_REQUIRED": enabled})
-        except Exception as exc:
-            LOGGER.error("Failed to sync shortener verification setting: %s", type(exc).__name__)
-            await query.answer(
-                "Could not save the shared runtime setting. Check runtime_settings.json permissions.",
-                show_alert=True,
-            )
-            return
-        await query.answer("Verification setting saved.")
-        Config.set("START_SHORTENER_REQUIRED", enabled)
-        await database.update_config({"START_SHORTENER_REQUIRED": enabled})
         await update_buttons(message, "shortener")
     elif data[1] == "blocked_ff":
         await query.answer()
