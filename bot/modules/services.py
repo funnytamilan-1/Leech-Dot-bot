@@ -146,11 +146,34 @@ async def _start_verification_gate(message, user_id):
         await send_message(message, "<blockquote>Verification is temporarily unavailable. Please try again later.</blockquote>")
         return True
 
+    # A real completion callback requires a public HTTPS base URL and a
+    # high-entropy shared secret. Never fall back to a direct Telegram deep link.
+    from os import environ
+    from urllib.parse import urlsplit
+
+    base_url = (Config.BASE_URL or Config.WEBPANEL_BASE_URL or "").strip().rstrip("/")
+    callback_secret = environ.get("SHORTENER_CALLBACK_SECRET", "").strip()
+    try:
+        base = urlsplit(base_url)
+        valid_base_url = base.scheme == "https" and bool(base.hostname)
+    except ValueError:
+        valid_base_url = False
+    if not valid_base_url or len(callback_secret) < 32:
+        LOGGER.error("Shortener verification blocked: public HTTPS BASE_URL and SHORTENER_CALLBACK_SECRET are required")
+        await send_message(
+            message,
+            "<b>⚠️ Secure verification is not configured</b>\\n\\n<blockquote>The owner must configure a public HTTPS BASE_URL and a strong SHORTENER_CALLBACK_SECRET, and connect a shortener provider that supports signed completion callbacks. Opening a link alone will not unlock access.</blockquote>",
+        )
+        return True
+
     token = token_urlsafe(24)
     await to_thread(
         issue_start_token, token, user_id, link_ttl
     )
-    target_url = f"https://t.me/{bot_info.username}?start=sdv_{token}"
+    target_url = (
+        f"{base_url}/start-verify/{token}"
+        f"?username={bot_info.username}&uid={user_id}"
+    )
     shortened_url = await short_url(target_url)
     if shortened_url == target_url:
         await send_message(
