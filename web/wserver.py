@@ -357,10 +357,10 @@ async def shortener_completion_callback(request: Request):
     if not hmac.compare_digest(expected, signature):
         raise HTTPException(status_code=403, detail="Invalid callback signature")
 
-    from Code_dot.database.verification import record_completion_proof
+    from Code_dot.database.verification import record_completion_proof_by_token
 
     ttl = _webpanel_settings()["link_ttl"]
-    accepted = await to_thread(record_completion_proof, token, ttl)
+    accepted = await to_thread(record_completion_proof_by_token, token, ttl)
     if not accepted:
         raise HTTPException(status_code=400, detail="No matching pending verification")
     return JSONResponse(
