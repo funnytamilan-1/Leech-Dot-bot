@@ -287,23 +287,18 @@ def _webpanel_settings():
     try:
         owner_id = int(value("OWNER_ID", 0) or 0)
         ticket_ttl = int(value("WEBPANEL_TICKET_TTL", 900) or 900)
-        link_ttl = int(value("START_SHORTENER_LINK_TTL", 900) or 900)
-        session_ttl = int(value("START_SHORTENER_SESSION_TTL", 86400) or 86400)
         max_tasks = int(value("BOT_MAX_TASKS", 0) or 0)
         hyper_threads = int(value("HYPER_THREADS", 0) or 0)
         hyper_pipeline = int(value("HYPER_PIPELINE", 64) or 64)
         hyper_chunk = int(value("HYPER_CHUNK", 8388608) or 8388608)
     except (ValueError, TypeError):
-        owner_id, ticket_ttl, link_ttl, session_ttl, max_tasks = 0, 900, 900, 86400, 0
+        owner_id, ticket_ttl, max_tasks = 0, 900, 0
         hyper_threads, hyper_pipeline, hyper_chunk = 0, 64, 8388608
     return {
         "secret": str(value("WEBPANEL_SECRET", "") or ""),
         "owner_id": owner_id,
         "sudo_users": value("SUDO_USERS", ""),
         "ticket_ttl": max(60, min(ticket_ttl, 1800)),
-        "shortener_required": str(value("START_SHORTENER_REQUIRED", False)).lower() in ("true", "1", "yes"),
-        "link_ttl": max(60, min(link_ttl, 86400)),
-        "session_ttl": max(60, min(session_ttl, 86400)),
         "name_swap": str(value("NAME_SWAP", "") or ""),
         "max_tasks": max_tasks,
         "use_hyper": str(value("USE_HYPER", True)).lower() in ("true", "1", "yes"),
@@ -319,79 +314,6 @@ def _webpanel_session(request):
     settings = _webpanel_settings()
     return verify_ticket(request.cookies.get("webpanel_session", ""), settings["secret"],
                          parse_admin_ids(settings["owner_id"], settings["sudo_users"]))
-
-
-@app.post("/api/shortener/complete")
-async def shortener_completion_callback(request: Request):
-    """Accept a signed server-to-server completion callback from a supported provider.
-
-    Configure the provider to POST JSON {token, timestamp, signature}. The
-    HMAC-SHA256 input is token:timestamp using SHORTENER_CALLBACK_SECRET.
-    Browser redirects never create completion proof. The provider must actually
-    support signed completion callbacks; this endpoint cannot manufacture proof.
-    """
-    import hashlib
-    import hmac
-    from time import time as current_time
-    from asyncio import to_thread
-
-    if request.url.scheme != "https" and request.headers.get("x-forwarded-proto") != "https":
-        raise HTTPException(status_code=400, detail="HTTPS is required")
-    secret = environ.get("SHORTENER_CALLBACK_SECRET", "").strip()
-    if len(secret) < 32:
-        raise HTTPException(status_code=503, detail="Completion callback is not configured")
-    try:
-        body = await request.json()
-        token = body.get("token", "")
-        timestamp = int(body.get("timestamp", 0))
-        signature = str(body.get("signature", "")).lower()
-    except (ValueError, TypeError, AttributeError):
-        raise HTTPException(status_code=400, detail="Invalid callback payload") from None
-    now = int(current_time())
-    if not isinstance(token, str) or not token or len(token) > 128 or abs(now - timestamp) > 300:
-        raise HTTPException(status_code=400, detail="Invalid or expired callback")
-    if len(signature) != 64:
-        raise HTTPException(status_code=403, detail="Invalid callback signature")
-    message = f"{token}:{timestamp}".encode("utf-8")
-    expected = hmac.new(secret.encode("utf-8"), message, hashlib.sha256).hexdigest()
-    if not hmac.compare_digest(expected, signature):
-        raise HTTPException(status_code=403, detail="Invalid callback signature")
-
-    from Code_dot.database.verification import record_completion_proof_by_token
-
-    ttl = _webpanel_settings()["link_ttl"]
-    accepted = await to_thread(record_completion_proof_by_token, token, ttl)
-    if not accepted:
-        raise HTTPException(status_code=400, detail="No matching pending verification")
-    return JSONResponse(
-        {"ok": True},
-        headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"},
-    )
-
-
-@app.get("/start-verify/{token}")
-async def shortener_return(token: str, username: str):
-    """Redirect to Telegram only after a trusted provider completion callback."""
-    from asyncio import to_thread
-    from Code_dot.database.verification import has_completion_proof
-
-    if not token or len(token) > 128:
-        raise HTTPException(status_code=404, detail="Verification link not found")
-    proven = await to_thread(has_completion_proof, token)
-    if not proven:
-        return HTMLResponse(
-            "<h2>Verification is not confirmed</h2><p>Complete the shortener provider's "
-            "required steps, including any CAPTCHA, then reopen the verification link.</p>",
-            status_code=403,
-            headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"},
-        )
-    if not re_compile(r"^[A-Za-z0-9_]{5,32}$").fullmatch(username):
-        raise HTTPException(status_code=400, detail="Invalid bot username")
-    return RedirectResponse(
-        f"https://t.me/{username}?start=sdv_{token}",
-        status_code=302,
-        headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"},
-    )
 
 
 @app.get("/webpanel", response_class=HTMLResponse)
@@ -439,9 +361,6 @@ async def webpanel_status(request: Request):
     settings = _webpanel_settings()
     overrides = read_runtime_overrides()
     return JSONResponse({
-        "shortener_required": overrides.get("START_SHORTENER_REQUIRED", settings["shortener_required"]),
-        "link_ttl": overrides.get("START_SHORTENER_LINK_TTL", settings["link_ttl"]),
-        "session_ttl": overrides.get("START_SHORTENER_SESSION_TTL", settings["session_ttl"]),
         "name_swap_enabled": bool(settings["name_swap"]),
         "max_tasks": settings["max_tasks"],
         "use_hyper": overrides.get("USE_HYPER", settings["use_hyper"]),
@@ -467,7 +386,7 @@ async def webpanel_update_settings(request: Request):
         body = await request.json()
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid request") from None
-    allowed = {"START_SHORTENER_REQUIRED", "START_SHORTENER_LINK_TTL", "START_SHORTENER_SESSION_TTL", "USE_HYPER", "HYPER_THREADS", "HYPER_PIPELINE", "HYPER_CHUNK"}
+    allowed = {"USE_HYPER", "HYPER_THREADS", "HYPER_PIPELINE", "HYPER_CHUNK"}
     if not isinstance(body, dict) or not body or set(body) - allowed:
         raise HTTPException(status_code=400, detail="Unsupported settings") from None
     from web.runtime_settings import write_runtime_overrides
@@ -480,9 +399,6 @@ async def webpanel_update_settings(request: Request):
     return JSONResponse({
         "ok": True,
         "settings": {
-            "START_SHORTENER_REQUIRED": saved.get("START_SHORTENER_REQUIRED", settings["shortener_required"]),
-            "START_SHORTENER_LINK_TTL": saved.get("START_SHORTENER_LINK_TTL", settings["link_ttl"]),
-            "START_SHORTENER_SESSION_TTL": saved.get("START_SHORTENER_SESSION_TTL", settings["session_ttl"]),
             "USE_HYPER": saved.get("USE_HYPER", settings["use_hyper"]),
             "HYPER_THREADS": saved.get("HYPER_THREADS", settings["hyper_threads"]),
             "HYPER_PIPELINE": saved.get("HYPER_PIPELINE", settings["hyper_pipeline"]),
