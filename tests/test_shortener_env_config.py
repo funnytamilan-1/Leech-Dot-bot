@@ -30,6 +30,13 @@ class ShortenerCallbackEnvironmentTests(unittest.TestCase):
         self.assertEqual(Config.SHORTENER_CALLBACK_SECRET, secret)
         self.assertNotIn("SHORTENER_CALLBACK_SECRET", Config.get_all())
 
+    def test_persisted_config_cannot_override_callback_secret(self):
+        secret = "c" * 64
+        Config.SHORTENER_CALLBACK_SECRET = secret
+        with self.assertRaisesRegex(ValueError, "BOT_TOKEN"):
+            Config.load_dict({"SHORTENER_CALLBACK_SECRET": "b" * 64})
+        self.assertEqual(Config.SHORTENER_CALLBACK_SECRET, secret)
+
 
 if __name__ == "__main__":
     unittest.main()
