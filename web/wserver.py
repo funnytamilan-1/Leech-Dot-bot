@@ -370,7 +370,7 @@ async def shortener_completion_callback(request: Request):
 
 
 @app.get("/start-verify/{token}")
-async def shortener_return(token: str):
+async def shortener_return(token: str, username: str):
     """Redirect to Telegram only after a trusted provider completion callback."""
     from asyncio import to_thread
     from Code_dot.database.verification import has_completion_proof
@@ -385,15 +385,8 @@ async def shortener_return(token: str):
             status_code=403,
             headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"},
         )
-    cfg = import_module("config")
-    bot_token = environ.get("BOT_TOKEN", "") or getattr(cfg, "BOT_TOKEN", "")
-    bot_id = bot_token.split(":", 1)[0] if ":" in bot_token else ""
-    if not bot_id:
-        raise HTTPException(status_code=503, detail="Bot identity is not configured")
-    # Resolve the username through Telegram-independent config only when provided.
-    username = environ.get("BOT_USERNAME", "") or getattr(cfg, "BOT_USERNAME", "")
-    if not username:
-        raise HTTPException(status_code=503, detail="BOT_USERNAME is not configured")
+    if not re_compile(r"^[A-Za-z0-9_]{5,32}$").fullmatch(username):
+        raise HTTPException(status_code=400, detail="Invalid bot username")
     return RedirectResponse(
         f"https://t.me/{username}?start=sdv_{token}",
         status_code=302,
