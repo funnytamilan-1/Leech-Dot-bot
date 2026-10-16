@@ -43,7 +43,8 @@ class VerificationDatabaseTests(unittest.TestCase):
 
     def test_expired_token_cannot_be_completed(self):
         verification.issue_token("expired-token", 123, 60)
-        with patch.object(verification.time, "time", return_value=10_000):
+        future = verification.time.time() + 10_000
+        with patch.object(verification.time, "time", return_value=future):
             self.assertFalse(verification.record_completion_proof("expired-token", 123, 900))
             self.assertFalse(verification.consume_token("expired-token", 123))
 
