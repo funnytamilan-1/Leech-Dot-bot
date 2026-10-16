@@ -162,7 +162,7 @@ async def _start_verification_gate(message, user_id):
         LOGGER.error("Shortener verification blocked: public HTTPS BASE_URL and SHORTENER_CALLBACK_SECRET are required")
         await send_message(
             message,
-            "<b>⚠️ Secure verification is not configured</b>\\n\\n<blockquote>The owner must configure a public HTTPS BASE_URL and a strong SHORTENER_CALLBACK_SECRET, and connect a shortener provider that supports signed completion callbacks. Opening a link alone will not unlock access.</blockquote>",
+            "<b>⚠️ Secure verification is not configured</b>\n\n<blockquote>The owner must configure a public HTTPS BASE_URL and a strong SHORTENER_CALLBACK_SECRET, and connect a shortener provider that supports signed completion callbacks. Opening a link alone will not unlock access.</blockquote>",
         )
         return True
 
