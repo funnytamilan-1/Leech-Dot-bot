@@ -254,10 +254,8 @@ class Config:
         # override them before validating required credentials.
         cls.load_config()
         cls.load_env()
-        # A stale persisted flag must not make /start unusable when optional
-        # shortener verification has no configured provider.
-        if cls.START_SHORTENER_REQUIRED and not cls.shortener_provider_configured():
-            cls.START_SHORTENER_REQUIRED = False
+        # Preserve an explicitly enabled gate. Runtime handlers fail closed
+        # when provider settings are missing instead of silently disabling access control.
         cls._validate_required()
 
     @classmethod
@@ -417,10 +415,8 @@ class Config:
                 value = value.strip()
             if not value:
                 raise ValueError(f"{key} variable is missing!")
-        # Verification must never block bot startup or /start when no provider
-        # is configured. A persisted stale True value is safely normalized OFF.
-        if cls.START_SHORTENER_REQUIRED and not cls.shortener_provider_configured():
-            cls.START_SHORTENER_REQUIRED = False
+        # Do not silently switch off a required verification gate. The gate
+        # must remain enabled and fail closed until provider settings are repaired.
 
 
 DEFAULT_CONFIG = Config.get_all()

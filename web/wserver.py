@@ -30,6 +30,7 @@ from fastapi.responses import (
     JSONResponse,
     Response,
     StreamingResponse,
+    RedirectResponse,
 )
 from fastapi.templating import Jinja2Templates
 from sabnzbdapi import SabnzbdClient
@@ -318,6 +319,79 @@ def _webpanel_session(request):
     settings = _webpanel_settings()
     return verify_ticket(request.cookies.get("webpanel_session", ""), settings["secret"],
                          parse_admin_ids(settings["owner_id"], settings["sudo_users"]))
+
+
+@app.post("/api/shortener/complete")
+async def shortener_completion_callback(request: Request):
+    """Accept a signed server-to-server completion callback from a supported provider.
+
+    Configure the provider to POST JSON {token, timestamp, signature}. The
+    HMAC-SHA256 input is token:timestamp using SHORTENER_CALLBACK_SECRET.
+    Browser redirects never create completion proof. The provider must actually
+    support signed completion callbacks; this endpoint cannot manufacture proof.
+    """
+    import hashlib
+    import hmac
+    from time import time as current_time
+    from asyncio import to_thread
+
+    if request.url.scheme != "https" and request.headers.get("x-forwarded-proto") != "https":
+        raise HTTPException(status_code=400, detail="HTTPS is required")
+    secret = environ.get("SHORTENER_CALLBACK_SECRET", "").strip()
+    if len(secret) < 32:
+        raise HTTPException(status_code=503, detail="Completion callback is not configured")
+    try:
+        body = await request.json()
+        token = body.get("token", "")
+        timestamp = int(body.get("timestamp", 0))
+        signature = str(body.get("signature", "")).lower()
+    except (ValueError, TypeError, AttributeError):
+        raise HTTPException(status_code=400, detail="Invalid callback payload") from None
+    now = int(current_time())
+    if not isinstance(token, str) or not token or len(token) > 128 or abs(now - timestamp) > 300:
+        raise HTTPException(status_code=400, detail="Invalid or expired callback")
+    if len(signature) != 64:
+        raise HTTPException(status_code=403, detail="Invalid callback signature")
+    message = f"{token}:{timestamp}".encode("utf-8")
+    expected = hmac.new(secret.encode("utf-8"), message, hashlib.sha256).hexdigest()
+    if not hmac.compare_digest(expected, signature):
+        raise HTTPException(status_code=403, detail="Invalid callback signature")
+
+    from Code_dot.database.verification import record_completion_proof_by_token
+
+    ttl = _webpanel_settings()["link_ttl"]
+    accepted = await to_thread(record_completion_proof_by_token, token, ttl)
+    if not accepted:
+        raise HTTPException(status_code=400, detail="No matching pending verification")
+    return JSONResponse(
+        {"ok": True},
+        headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"},
+    )
+
+
+@app.get("/start-verify/{token}")
+async def shortener_return(token: str, username: str):
+    """Redirect to Telegram only after a trusted provider completion callback."""
+    from asyncio import to_thread
+    from Code_dot.database.verification import has_completion_proof
+
+    if not token or len(token) > 128:
+        raise HTTPException(status_code=404, detail="Verification link not found")
+    proven = await to_thread(has_completion_proof, token)
+    if not proven:
+        return HTMLResponse(
+            "<h2>Verification is not confirmed</h2><p>Complete the shortener provider's "
+            "required steps, including any CAPTCHA, then reopen the verification link.</p>",
+            status_code=403,
+            headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"},
+        )
+    if not re_compile(r"^[A-Za-z0-9_]{5,32}$").fullmatch(username):
+        raise HTTPException(status_code=400, detail="Invalid bot username")
+    return RedirectResponse(
+        f"https://t.me/{username}?start=sdv_{token}",
+        status_code=302,
+        headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"},
+    )
 
 
 @app.get("/webpanel", response_class=HTMLResponse)

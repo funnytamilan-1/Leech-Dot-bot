@@ -105,24 +105,15 @@ async def _start_verification_gate(message, user_id):
     if not required or user_id == Config.OWNER_ID:
         return False
 
-    # Verification is optional: never block /start when no provider is usable.
-    # This also repairs stale runtime_settings.json values left by older versions.
+    # Fail closed when verification is required but the provider is unavailable.
+    # Never silently turn the gate off: that would create an access-control bypass.
     if not Config.shortener_provider_configured():
-        LOGGER.warning(
-            "Start verification disabled because no shortener provider is configured"
+        LOGGER.error("Start verification required but shortener provider is not configured")
+        await send_message(
+            message,
+            "<b>⚠️ Verification temporarily unavailable</b>\n\n<blockquote>The verification provider is not configured correctly. Protected bot activities remain locked until the owner fixes the provider settings. Please try again later.</blockquote>",
         )
-        Config.set("START_SHORTENER_REQUIRED", False)
-        try:
-            from web.runtime_settings import write_runtime_overrides
-
-            write_runtime_overrides({"START_SHORTENER_REQUIRED": False})
-        except Exception as exc:
-            LOGGER.warning("Could not clear stale verification override: %s", type(exc).__name__)
-        try:
-            await database.update_config({"START_SHORTENER_REQUIRED": False})
-        except Exception as exc:
-            LOGGER.warning("Could not persist optional verification fallback: %s", type(exc).__name__)
-        return False
+        return True
 
     command_args = getattr(message, "command", []) or []
     if len(command_args) > 1 and command_args[1].startswith("sdv_"):
@@ -135,7 +126,7 @@ async def _start_verification_gate(message, user_id):
             )
             await send_message(
                 message,
-                "<b>⚠️ Verification Failed</b>\n\n<blockquote>This verification link is invalid, expired, already used, or belongs to another Telegram account. Attempts to skip verification will not unlock the bot. Send /start to request a fresh, personal link.</blockquote>\n\n<code>Made by @Code_Dots · Partner @CodeRips</code>",
+                "<b>⚠️ Verification Failed</b>\n\n<blockquote>This link is invalid, expired, already used, belongs to another Telegram account, or the provider has not supplied trusted completion proof. Opening the destination alone is not enough. Complete the provider flow and try again.</blockquote>\n\n<code>Made by @Code_Dots · Partner @CodeRips</code>",
             )
             return True
         await to_thread(
@@ -155,11 +146,34 @@ async def _start_verification_gate(message, user_id):
         await send_message(message, "<blockquote>Verification is temporarily unavailable. Please try again later.</blockquote>")
         return True
 
+    # A real completion callback requires a public HTTPS base URL and a
+    # high-entropy shared secret. Never fall back to a direct Telegram deep link.
+    from os import environ
+    from urllib.parse import urlsplit
+
+    base_url = (Config.BASE_URL or Config.WEBPANEL_BASE_URL or "").strip().rstrip("/")
+    callback_secret = environ.get("SHORTENER_CALLBACK_SECRET", "").strip()
+    try:
+        base = urlsplit(base_url)
+        valid_base_url = base.scheme == "https" and bool(base.hostname)
+    except ValueError:
+        valid_base_url = False
+    if not valid_base_url or len(callback_secret) < 32:
+        LOGGER.error("Shortener verification blocked: public HTTPS BASE_URL and SHORTENER_CALLBACK_SECRET are required")
+        await send_message(
+            message,
+            "<b>⚠️ Secure verification is not configured</b>\\n\\n<blockquote>The owner must configure a public HTTPS BASE_URL and a strong SHORTENER_CALLBACK_SECRET, and connect a shortener provider that supports signed completion callbacks. Opening a link alone will not unlock access.</blockquote>",
+        )
+        return True
+
     token = token_urlsafe(24)
     await to_thread(
         issue_start_token, token, user_id, link_ttl
     )
-    target_url = f"https://t.me/{bot_info.username}?start=sdv_{token}"
+    target_url = (
+        f"{base_url}/start-verify/{token}"
+        f"?username={bot_info.username}&uid={user_id}"
+    )
     shortened_url = await short_url(target_url)
     if shortened_url == target_url:
         await send_message(
