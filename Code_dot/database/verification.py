@@ -152,3 +152,17 @@ def has_completion_proof(token: str) -> bool:
             )
             return False
         return True
+
+
+def record_completion_proof_by_token(token: str, ttl: int) -> bool:
+    """Record proof using the user ID already bound to the pending token."""
+    token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
+    now = time.time()
+    with _connect() as connection:
+        row = connection.execute(
+            "SELECT user_id, expires_at FROM pending_tokens WHERE token_hash = ?",
+            (token_hash,),
+        ).fetchone()
+    if not row or float(row[1]) <= now:
+        return False
+    return record_completion_proof(token, int(row[0]), ttl)
