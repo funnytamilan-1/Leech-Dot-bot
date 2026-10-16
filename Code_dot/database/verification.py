@@ -133,3 +133,22 @@ def is_verified(user_id: int) -> bool:
             connection.execute("DELETE FROM verified_users WHERE user_id = ?", (int(user_id),))
             return False
         return True
+
+
+def has_completion_proof(token: str) -> bool:
+    """Return whether an unexpired provider proof exists for a pending token."""
+    token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
+    now = time.time()
+    with _connect() as connection:
+        row = connection.execute(
+            "SELECT expires_at FROM completion_proofs WHERE token_hash = ?",
+            (token_hash,),
+        ).fetchone()
+        if not row:
+            return False
+        if float(row[0]) <= now:
+            connection.execute(
+                "DELETE FROM completion_proofs WHERE token_hash = ?", (token_hash,)
+            )
+            return False
+        return True
