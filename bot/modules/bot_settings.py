@@ -472,12 +472,11 @@ async def get_buttons(key=None, edit_type=None, edit_mode=False):
         buttons.data_button("Close", "botset close", position="footer", style=ButtonStyle.DANGER)
         msg = (
             "<b>🔗 Shortener Configuration</b>\n\n"
-            f"<blockquote>• <b>Provider:</b> {provider_status}\n"
+            f"<blockquote>• <b>Provider:</b> {provider_status}</blockquote>\n\n"
             "<b>Setup</b>\n"
             "1. Set the HTTPS API endpoint and API key.\n"
             "2. Set the method, parameter names, and response JSON field to match your provider.\n"
             "3. Tap <b>Test Provider</b>.\n"
-            "4. Turn verification ON only after the test succeeds.\n\n"
             "<i>Every change is saved to the bot database. The API key is never shown in the menu. "
             "Configure an HTTPS API endpoint and key below. Shortener is optional.</i>"
         )
