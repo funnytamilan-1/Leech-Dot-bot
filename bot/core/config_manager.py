@@ -269,6 +269,9 @@ class Config:
         except ModuleNotFoundError:
             return
         for attr in dir(settings):
+            # Callback signing keys must come only from the process environment.
+            if attr == "SHORTENER_CALLBACK_SECRET":
+                continue
             if hasattr(cls, attr):
                 value = getattr(settings, attr)
                 # Explicit False/0 values are valid configuration overrides.
@@ -394,6 +397,9 @@ class Config:
     @classmethod
     def load_dict(cls, config_dict):
         for key, value in config_dict.items():
+            # Never load callback signing keys from persisted/admin-editable config.
+            if key == "SHORTENER_CALLBACK_SECRET":
+                continue
             if hasattr(cls, key):
                 if key == "DEFAULT_UPLOAD" and value != "gd":
                     value = "rc"
