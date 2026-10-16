@@ -35,8 +35,19 @@ def _chat_context(update):
 
 
 async def _start_verified(user_id):
-    if not Config.START_SHORTENER_REQUIRED or user_id == Config.OWNER_ID:
+    """Apply the same verification setting to every command using these filters."""
+    if user_id == Config.OWNER_ID:
         return True
+    from web.runtime_settings import read_runtime_overrides
+
+    required = read_runtime_overrides().get(
+        "START_SHORTENER_REQUIRED", Config.START_SHORTENER_REQUIRED
+    )
+    if not required:
+        return True
+    # Fail closed if the gate is enabled but its provider is not configured.
+    if not Config.shortener_provider_configured():
+        return False
     return await to_thread(is_start_verified, user_id)
 
 
