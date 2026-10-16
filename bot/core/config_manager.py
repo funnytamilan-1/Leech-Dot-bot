@@ -64,8 +64,6 @@ class Config:
     GOFILE_AUTO_CREATE_FOLDER = False
     PIXELDRAIN_KEY = ""
     SHORTENER_API_URL = ""
-    # Loaded from private environment only; intentionally hidden from Config Variables UI.
-    SHORTENER_CALLBACK_SECRET = ""
     SHORTENER_API_KEY = ""
     SHORTENER_API_METHOD = "GET"
     SHORTENER_API_KEY_PARAM = "api"
@@ -186,9 +184,6 @@ class Config:
     TMDB_ACCESS_TOKEN = ""
     AUTO_THUMBNAIL = False
     VERIFY_TIMEOUT = 0
-    START_SHORTENER_REQUIRED = False
-    START_SHORTENER_LINK_TTL = 900
-    START_SHORTENER_SESSION_TTL = 86400
     WEBPANEL_BASE_URL = ""
     WEBPANEL_SECRET = ""
     WEBPANEL_TICKET_TTL = 900
@@ -248,7 +243,6 @@ class Config:
             key: getattr(cls, key)
             for key in cls.__dict__.keys()
             if not key.startswith("__")
-            and key != "SHORTENER_CALLBACK_SECRET"
             and not callable(getattr(cls, key))
         }
 
@@ -258,8 +252,6 @@ class Config:
         # override them before validating required credentials.
         cls.load_config()
         cls.load_env()
-        # Preserve an explicitly enabled gate. Runtime handlers fail closed
-        # when provider settings are missing instead of silently disabling access control.
         cls._validate_required()
 
     @classmethod
@@ -269,9 +261,6 @@ class Config:
         except ModuleNotFoundError:
             return
         for attr in dir(settings):
-            # Callback signing keys must come only from the process environment.
-            if attr == "SHORTENER_CALLBACK_SECRET":
-                continue
             if hasattr(cls, attr):
                 value = getattr(settings, attr)
                 # Explicit False/0 values are valid configuration overrides.
@@ -320,10 +309,6 @@ class Config:
             cls.LEECH_LOG_CHAT = cls._convert_env_type(
                 "LEECH_LOG_CHAT", legacy_dump_chat
             )
-        # Keep the callback secret environment-only and out of public/admin config listings.
-        callback_secret = getenv("SHORTENER_CALLBACK_SECRET")
-        if callback_secret is not None:
-            cls.SHORTENER_CALLBACK_SECRET = callback_secret.strip()
         config_vars = cls.get_all()
         for key in config_vars:
             env_value = getenv(key)
@@ -397,9 +382,6 @@ class Config:
     @classmethod
     def load_dict(cls, config_dict):
         for key, value in config_dict.items():
-            # Never load callback signing keys from persisted/admin-editable config.
-            if key == "SHORTENER_CALLBACK_SECRET":
-                continue
             if hasattr(cls, key):
                 if key == "DEFAULT_UPLOAD" and value != "gd":
                     value = "rc"
@@ -429,8 +411,6 @@ class Config:
                 value = value.strip()
             if not value:
                 raise ValueError(f"{key} variable is missing!")
-        # Do not silently switch off a required verification gate. The gate
-        # must remain enabled and fail closed until provider settings are repaired.
 
 
 DEFAULT_CONFIG = Config.get_all()
