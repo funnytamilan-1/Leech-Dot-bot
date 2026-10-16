@@ -111,7 +111,7 @@ async def _start_verification_gate(message, user_id):
         LOGGER.error("Start verification required but shortener provider is not configured")
         await send_message(
             message,
-            "<b>⚠️ Verification temporarily unavailable</b>\\n\\n<blockquote>The verification provider is not configured correctly. Protected bot activities remain locked until the owner fixes the provider settings. Please try again later.</blockquote>",
+            "<b>⚠️ Verification temporarily unavailable</b>\n\n<blockquote>The verification provider is not configured correctly. Protected bot activities remain locked until the owner fixes the provider settings. Please try again later.</blockquote>",
         )
         return True
 
