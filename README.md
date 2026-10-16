@@ -98,8 +98,6 @@ Configure the required settings using your hosting provider's private environmen
 | `TELEGRAM_HASH` | Telegram API hash |
 | `DATABASE_URL` | Optional database connection string, if used by the deployment |
 | `UPSTREAM_REPO` | Optional update source; keep empty unless you intentionally configure one |
-| `BASE_URL` | Public HTTPS origin for verification callback/return links; configure only after DNS and TLS work. |
-| `SHORTENER_CALLBACK_SECRET` | Private random secret of at least 32 characters, set in the service environment only. Never commit it or expose it in the admin config UI. |
 
 The exact names and required values are defined by the current source. Do not paste real credentials into README files, public issues, screenshots, or commits.
 
@@ -171,24 +169,6 @@ Do not mark a feature as fixed or tested until the corresponding check has actua
 </div>
 
 
-## 𝗦ᴛᴀʀᴛ 𝗦ʜᴏʀᴛᴇɴᴇʀ 𝗩ᴇʀɪғɪᴄᴀᴛɪᴏɴ
-
-Optional `/start` verification can be enabled in `config.py`:
-
-```python
-START_SHORTENER_REQUIRED = True
-START_SHORTENER_LINK_TTL = 900
-START_SHORTENER_SESSION_TTL = 86400
-```
-
-Configure at least one provider in `shortener.txt` (one `domain API_KEY` pair per line) or configure `PROTECTED_API`. Keep API keys private. If the provider is unavailable, the gate fails closed instead of handing out an unshortened link.
-
-The owner can also manage `START_SHORTENER_REQUIRED`, `START_SHORTENER_LINK_TTL`, and `START_SHORTENER_SESSION_TTL` from the bot's admin **Config Variables** menu. The shortener API credentials and provider list still need to be configured through the private configuration/file settings. Shortener results are accepted only when they are absolute HTTPS URLs.
-
-The gate uses a random, user-bound, expiring, one-time token. Verification state is stored in `Code_dot/database/verification.sqlite3` by default. To put runtime data on a persistent hosting volume, set `CODE_DOT_DATA_DIR` to that volume's directory. Without persistent storage, local verification state may be lost on redeploy.
-
-**Important limitation:** a redirect-only shortener cannot prove that a visitor completed every ad, captcha, or task on the provider's page. This flow verifies that the user returned through the configured short link. Strict completion verification requires a provider-supported signed callback/webhook or API that confirms completion. It does not bypass a provider's access controls.
-
 ## 𝗖ʀᴇᴅɪᴛs
 
 **𝗠ᴀᴅᴇ ʙʏ [@Code_Dots](https://t.me/Code_Dots) · 𝗣ᴀʀᴛɴᴇʀ [@CodeRips](https://t.me/CodeRips)**
@@ -205,14 +185,6 @@ The owner and configured sudo users can send `/webpanel` to receive a short-live
 - `WEBPANEL_TICKET_TTL`: signed-link lifetime in seconds (60–1800; default 900).
 - `LEECH_DOT_RUNTIME_SETTINGS`: optional absolute path for the shared runtime settings file. Bot and web workers must use the same file path; default is `runtime_settings.json` in their working directory.
 
-The control center supports runtime shortener verification enable/disable and link/session TTL settings. The private runtime settings file is ignored by Git and is written atomically. Serve the panel only over HTTPS. Never share the admin link or publish the signing secret.
+The control center supports runtime transfer settings. The private runtime settings file is ignored by Git and is written atomically. Serve the panel only over HTTPS. Never share the admin link or publish the signing secret.
 
 The panel uses the configured `OWNER_ID` and `SUDO_USERS` values for server-side authorization; hiding the dashboard in the browser is not an access-control mechanism.
-
-## Shortener verification security
-
-Keep the optional start gate disabled until a supported provider is configured with a **server-to-server completion callback**. A redirect back to Telegram is not proof that a provider task or CAPTCHA was completed. The gate fails closed when enabled but the shortener API is missing.
-
-For providers that support the exact signed callback contract, configure `BASE_URL` as a public HTTPS origin and set `SHORTENER_CALLBACK_SECRET` as a private environment variable (at least 32 random characters). The callback endpoint is `POST /api/shortener/complete` with a JSON body containing `token`, `timestamp`, and `signature`. The signature is the lowercase hex HMAC-SHA256 digest of the UTF-8 string `{token}:{timestamp}`, using `SHORTENER_CALLBACK_SECRET`. Timestamps more than five minutes from server time are rejected. The token is already bound to its intended Telegram user in the verification database. A provider must send this signed server-to-server callback only after it has confirmed completion; a browser redirect alone is not proof. Providers that cannot produce this exact trusted callback are **not compatible with strict completion verification**.
-
-CAPTCHA challenges must be completed by the user on the provider site. This bot does not solve or bypass CAPTCHA. Keep the verification SQLite database in persistent storage so restarts/redeployments do not erase verified-user records. Do not publish callback secrets or provider API keys.
