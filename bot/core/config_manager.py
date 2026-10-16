@@ -64,6 +64,8 @@ class Config:
     GOFILE_AUTO_CREATE_FOLDER = False
     PIXELDRAIN_KEY = ""
     SHORTENER_API_URL = ""
+    # Loaded from private environment only; intentionally hidden from Config Variables UI.
+    SHORTENER_CALLBACK_SECRET = ""
     SHORTENER_API_KEY = ""
     SHORTENER_API_METHOD = "GET"
     SHORTENER_API_KEY_PARAM = "api"
@@ -245,7 +247,9 @@ class Config:
         return {
             key: getattr(cls, key)
             for key in cls.__dict__.keys()
-            if not key.startswith("__") and not callable(getattr(cls, key))
+            if not key.startswith("__")
+            and key != "SHORTENER_CALLBACK_SECRET"
+            and not callable(getattr(cls, key))
         }
 
     @classmethod
@@ -313,6 +317,10 @@ class Config:
             cls.LEECH_LOG_CHAT = cls._convert_env_type(
                 "LEECH_LOG_CHAT", legacy_dump_chat
             )
+        # Keep the callback secret environment-only and out of public/admin config listings.
+        callback_secret = getenv("SHORTENER_CALLBACK_SECRET")
+        if callback_secret is not None:
+            cls.SHORTENER_CALLBACK_SECRET = callback_secret.strip()
         config_vars = cls.get_all()
         for key in config_vars:
             env_value = getenv(key)
