@@ -320,6 +320,46 @@ def _webpanel_session(request):
                          parse_admin_ids(settings["owner_id"], settings["sudo_users"]))
 
 
+@app.get("/api/shortener/complete")
+async def shortener_completion_callback(
+    request: Request, token: str, user_id: int, timestamp: int, signature: str
+):
+    """Accept a signed server-to-server completion callback from a supported provider.
+
+    The provider must HMAC-SHA256 sign the UTF-8 string user_id:token:timestamp
+    with SHORTENER_CALLBACK_SECRET and call this endpoint over HTTPS. This is not
+    a browser redirect handler: ordinary redirects never create completion proof.
+    """
+    import hashlib
+    import hmac
+    from time import time as current_time
+    from asyncio import to_thread
+
+    if request.url.scheme != "https" and request.headers.get("x-forwarded-proto") != "https":
+        raise HTTPException(status_code=400, detail="HTTPS is required")
+    secret = environ.get("SHORTENER_CALLBACK_SECRET", "").strip()
+    if len(secret) < 32:
+        raise HTTPException(status_code=503, detail="Completion callback is not configured")
+    now = int(current_time())
+    if abs(now - timestamp) > 300 or not token or len(token) > 128:
+        raise HTTPException(status_code=400, detail="Invalid or expired callback")
+    message = f"{user_id}:{token}:{timestamp}".encode("utf-8")
+    expected = hmac.new(secret.encode("utf-8"), message, hashlib.sha256).hexdigest()
+    if not hmac.compare_digest(expected, signature.lower()):
+        raise HTTPException(status_code=403, detail="Invalid callback signature")
+
+    from Code_dot.database.verification import record_completion_proof
+
+    ttl = _webpanel_settings()["link_ttl"]
+    accepted = await to_thread(record_completion_proof, token, user_id, ttl)
+    if not accepted:
+        raise HTTPException(status_code=400, detail="No matching pending verification")
+    return JSONResponse(
+        {"ok": True},
+        headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"},
+    )
+
+
 @app.get("/webpanel", response_class=HTMLResponse)
 async def webpanel_page(request: Request):
     response = templates.TemplateResponse(request, "control_center.html")
