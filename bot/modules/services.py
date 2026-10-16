@@ -1,7 +1,6 @@
 # Leech Dot Bot customizations by @Code_Dots · partner @CodeRips.
 from asyncio import gather, to_thread
 from html import escape
-from secrets import token_urlsafe
 
 from time import monotonic, time
 from uuid import uuid4
@@ -18,13 +17,6 @@ from ..helper.ext_utils.bot_utils import new_task, update_user_ldata
 from ..helper.ext_utils.links_utils import decode_slink
 from ..helper.ext_utils.status_utils import get_readable_time
 from ..helper.ext_utils.db_handler import database
-from ..helper.ext_utils.shortener_utils import short_url
-from Code_dot.database.verification import (
-    consume_token as consume_start_token,
-    is_verified as is_start_verified,
-    issue_token as issue_start_token,
-    mark_verified as mark_start_verified,
-)
 from ..helper.languages import Language
 from ..helper.telegram_helper.bot_commands import BotCommands
 from ..helper.telegram_helper.button_build import ButtonMaker, ButtonStyle
@@ -89,109 +81,6 @@ async def _build_start_buttons():
     return buttons.build_menu(b_cols=3, h_cols=2, f_cols=1)
 
 
-async def _start_verification_gate(message, user_id):
-    """Gate /start with a user-bound, expiring shortener token when enabled.
-
-    This confirms the user returned through the configured redirect. Providers
-    without server-side callbacks cannot cryptographically prove that every
-    intermediate ad/task was completed.
-    """
-    from web.runtime_settings import read_runtime_overrides
-
-    overrides = read_runtime_overrides()
-    required = overrides.get("START_SHORTENER_REQUIRED", Config.START_SHORTENER_REQUIRED)
-    link_ttl = overrides.get("START_SHORTENER_LINK_TTL", Config.START_SHORTENER_LINK_TTL)
-    session_ttl = overrides.get("START_SHORTENER_SESSION_TTL", Config.START_SHORTENER_SESSION_TTL)
-    if not required or user_id == Config.OWNER_ID:
-        return False
-
-    # Fail closed when verification is required but the provider is unavailable.
-    # Never silently turn the gate off: that would create an access-control bypass.
-    if not Config.shortener_provider_configured():
-        LOGGER.error("Start verification required but shortener provider is not configured")
-        await send_message(
-            message,
-            "<b>⚠️ Verification temporarily unavailable</b>\n\n<blockquote>The verification provider is not configured correctly. Protected bot activities remain locked until the owner fixes the provider settings. Please try again later.</blockquote>",
-        )
-        return True
-
-    command_args = getattr(message, "command", []) or []
-    if len(command_args) > 1 and command_args[1].startswith("sdv_"):
-        token = command_args[1][4:]
-        valid = await to_thread(consume_start_token, token, user_id)
-        if not valid:
-            LOGGER.warning(
-                "Shortener verification rejected | user_id=%s | reason=invalid_expired_or_wrong_user",
-                user_id,
-            )
-            await send_message(
-                message,
-                "<b>⚠️ Verification Failed</b>\n\n<blockquote>This link is invalid, expired, already used, belongs to another Telegram account, or the provider has not supplied trusted completion proof. Opening the destination alone is not enough. Complete the provider flow and try again.</blockquote>\n\n<code>Made by @Code_Dots · Partner @CodeRips</code>",
-            )
-            return True
-        await to_thread(
-            mark_start_verified, user_id, session_ttl
-        )
-        await send_message(
-            message,
-            "<blockquote><b>✅ Verification successful.</b>\nSend /start again to open the bot.</blockquote>",
-        )
-        return True
-
-    if await to_thread(is_start_verified, user_id):
-        return False
-
-    bot_info = await TgClient.bot.get_me()
-    if not getattr(bot_info, "username", None):
-        await send_message(message, "<blockquote>Verification is temporarily unavailable. Please try again later.</blockquote>")
-        return True
-
-    # A real completion callback requires a public HTTPS base URL and a
-    # high-entropy shared secret. Never fall back to a direct Telegram deep link.
-    from os import environ
-    from urllib.parse import urlsplit
-
-    base_url = (Config.BASE_URL or Config.WEBPANEL_BASE_URL or "").strip().rstrip("/")
-    callback_secret = environ.get("SHORTENER_CALLBACK_SECRET", "").strip()
-    try:
-        base = urlsplit(base_url)
-        valid_base_url = base.scheme == "https" and bool(base.hostname)
-    except ValueError:
-        valid_base_url = False
-    if not valid_base_url or len(callback_secret) < 32:
-        LOGGER.error("Shortener verification blocked: public HTTPS BASE_URL and SHORTENER_CALLBACK_SECRET are required")
-        await send_message(
-            message,
-            "<b>⚠️ Secure verification is not configured</b>\n\n<blockquote>The owner must configure a public HTTPS BASE_URL and a strong SHORTENER_CALLBACK_SECRET, and connect a shortener provider that supports signed completion callbacks. Opening a link alone will not unlock access.</blockquote>",
-        )
-        return True
-
-    token = token_urlsafe(24)
-    await to_thread(
-        issue_start_token, token, user_id, link_ttl
-    )
-    target_url = (
-        f"{base_url}/start-verify/{token}"
-        f"?username={bot_info.username}&uid={user_id}"
-    )
-    shortened_url = await short_url(target_url)
-    if shortened_url == target_url:
-        await send_message(
-            message,
-            "<blockquote><b>Could not create a verification link.</b>\nPlease try /start again in a moment.</blockquote>",
-        )
-        return True
-
-    buttons = ButtonMaker()
-    buttons.url_button("🔐 Verify to Start", shortened_url)
-    await send_message(
-        message,
-        "<b>🔐 Start Verification</b>\n\n<blockquote>Open the verification link, complete the configured shortener flow, then return to Telegram. This link is user-bound, expires soon, and can only be used once.</blockquote>",
-        buttons.build_menu(1),
-    )
-    return True
-
-
 @new_task
 async def start(_, message):
     sender = getattr(message, "from_user", None)
@@ -199,8 +88,6 @@ async def start(_, message):
         LOGGER.warning("Ignoring /start update without a Telegram user")
         return
     userid = sender.id
-    if await _start_verification_gate(message, userid):
-        return
     user_name = message.from_user.first_name if message.from_user else "User"
     reply_markup = await _build_start_buttons()
 
@@ -325,8 +212,6 @@ async def login(_, message):
     sender = getattr(message, "from_user", None)
     if sender is None:
         LOGGER.warning("Ignoring /login update without a Telegram user")
-        return
-    if await _start_verification_gate(message, sender.id):
         return
     if Config.LOGIN_PASS is None:
         return await send_message(message, "<blockquote>Login password feature is not enabled.</blockquote>")
