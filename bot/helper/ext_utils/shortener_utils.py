@@ -125,11 +125,14 @@ async def short_url(longurl, attempt=0):
         except Exception as exc:
             # Do not log request URLs or provider payloads: they can contain
             # user-specific deep links and credentials.
+            # ValueError messages in this module are deliberately sanitized (status/content type
+            # or validation hints). Other exception text may contain request URLs or credentials.
+            safe_detail = str(exc)[:180] if isinstance(exc, ValueError) else type(exc).__name__
             LOGGER.warning(
                 "Shortener request failed (attempt %s/%s): %s",
                 retry + 1,
                 tries,
-                type(exc).__name__,
+                safe_detail,
             )
             if retry + 1 < tries:
                 await asyncio.sleep(min(0.5 * (2**retry), 4))
