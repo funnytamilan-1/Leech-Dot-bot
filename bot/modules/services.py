@@ -142,9 +142,19 @@ async def start(_, message):
     if await CustomFilters.authorized(_, message):
         start_string = (
             f"<b>👋 Welcome, {escape(user_name)}!</b>\n\n"
-            f"<blockquote><b>𝗟ᴇᴇᴄʜ 𝗗ᴏᴛ 𝗕ᴏᴛ</b> by @Code_Dots · Partner @CodeRips is ready to mirror and leech files, torrents, and cloud links to Telegram or Cloud Storage.</blockquote>\n\n"
-            f"<b>💡 Commands & Help:</b> Use /{help_cmd} to view all available commands and guides.\n"
-            f"<b>💬 Authorized Chats:</b> Click any of the authorized chat buttons below to access supported groups."
+            f"<blockquote><b>𝗟ᴇᴇᴄʜ 𝗗ᴏᴛ 𝗕ᴏᴛ</b> · Your personal file-transfer and media toolkit.\n"
+            f"Made by @Code_Dots · Partner @CodeRips</blockquote>\n\n"
+            f"<b>📥 Leech & Upload</b>\n"
+            f"• Direct links, Telegram files, torrents, MEGA and supported cloud sources\n"
+            f"• Batch links, queues, progress, speed and ETA\n\n"
+            f"<b>🎬 Media Tools</b>\n"
+            f"• FFmpeg encoding, conversion, trim, merge and stream selection\n"
+            f"• Audio/subtitle track tools, metadata editing and watermark presets\n\n"
+            f"<b>⚙️ File Tools</b>\n"
+            f"• Rename, custom thumbnails, ZIP/extract, split and upload destinations\n"
+            f"• Optional cloud upload, streaming and personal settings\n\n"
+            f"<b>💡 Get Started:</b> Send /{help_cmd} for commands and usage examples.\n"
+            f"<b>🔐 Access:</b> Use only in authorized chats or your configured private instance."
         )
         await send_message(message, start_string, reply_markup, photo="IMAGES")
     elif Config.BOT_PM:
